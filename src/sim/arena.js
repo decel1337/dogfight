@@ -1,10 +1,7 @@
-export function wrapBounds(state, width, height) {
-  let { x, y } = state;
-  if (x < 0) x += width;
-  else if (x > width) x -= width;
+export function wrapBounds(entity, width, height) {
+  if (entity.pos.x < 0) entity.pos.x += width;
+  else if (entity.pos.x > width) entity.pos.x -= width;
 
-  if (y < 0) y += height;
-  else if (y > height) y -= height;
-
-  return { ...state, x, y };
+  if (entity.pos.y < 0) entity.pos.y += height;
+  else if (entity.pos.y > height) entity.pos.y -= height;
 }

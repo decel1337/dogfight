@@ -20,6 +20,9 @@ export function setupCanvas(canvas) {
 
   return {
     ctx,
-    getLogicalSize: () => ({ width: window.innerWidth, height: window.innerHeight }),
+    getLogicalSize: () => ({
+      width: window.innerWidth,
+      height: window.innerHeight,
+    }),
   };
 }
