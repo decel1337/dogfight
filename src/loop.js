@@ -1,62 +1,67 @@
-export function createLoop({ step = 1 / 60, simulate, render }) {
-  let accumulator = 0;
-  let lastTime = performance.now();
+// Чистий акумулятор часу: не знає про requestAnimationFrame, тому його
+// можна тестувати в Node. Повертає alpha для інтерполяції рендеру.
+export function createAccumulator({ step = 1 / 60, maxFrame = 0.25 } = {}) {
+  let acc = 0;
+  return {
+    push(frameSeconds, simulate) {
+      acc += Math.min(frameSeconds, maxFrame);
+      let steps = 0;
+      while (acc >= step) {
+        simulate(step);
+        acc -= step;
+        steps++;
+      }
+      return { steps, alpha: acc / step };
+    },
+  };
+}
+
+export function createLoop({ step = 1 / 60, simulate, render, maxFrame }) {
+  const accumulator = createAccumulator({ step, maxFrame });
+  const metrics = { stepsPerSecond: 0, fps: 0, frameMs: 0 };
+
   let rafId = null;
-  let running = false;
+  let last = null;
+  let windowStart = 0;
+  let steps = 0;
+  let frames = 0;
 
-  let framesThisSec = 0;
-  let stepsThisSec = 0;
-  let lastFpsUpdate = performance.now();
-  let fps = 0;
-  let sps = 0;
-  let frameTime = 0;
+  function frame(time) {
+    if (last === null) {
+      last = time;
+      windowStart = time;
+    }
+    const frameMs = time - last;
+    last = time;
 
-  function frame(now) {
-    if (!running) return;
+    const result = accumulator.push(frameMs / 1000, simulate);
+    steps += result.steps;
+    frames++;
+    metrics.frameMs = frameMs;
 
-    const frameStart = performance.now();
-    const rawDelta = (now - lastTime) / 1000;
-    lastTime = now;
-
-    // Обмеження дельти для захисту від "спіралі смерті" після підвисання
-    const dt = Math.min(rawDelta, 0.25);
-    accumulator += dt;
-
-    while (accumulator >= step) {
-      simulate(step);
-      accumulator -= step;
-      stepsThisSec++;
+    if (time - windowStart >= 500) {
+      const seconds = (time - windowStart) / 1000;
+      metrics.stepsPerSecond = Math.round(steps / seconds);
+      metrics.fps = Math.round(frames / seconds);
+      steps = 0;
+      frames = 0;
+      windowStart = time;
     }
 
-    const alpha = accumulator / step;
-    render(alpha);
-    framesThisSec++;
-
-    frameTime = performance.now() - frameStart;
-
-    if (now - lastFpsUpdate >= 1000) {
-      fps = framesThisSec;
-      sps = stepsThisSec;
-      framesThisSec = 0;
-      stepsThisSec = 0;
-      lastFpsUpdate = now;
-    }
-
+    render(result.alpha, metrics);
     rafId = requestAnimationFrame(frame);
   }
 
   return {
+    metrics,
     start() {
-      if (running) return;
-      running = true;
-      lastTime = performance.now();
-      lastFpsUpdate = performance.now();
+      if (rafId !== null) return;
+      last = null;
       rafId = requestAnimationFrame(frame);
     },
     stop() {
-      running = false;
-      if (rafId) cancelAnimationFrame(rafId);
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      rafId = null;
     },
-    getStats: () => ({ fps, sps, frameTime }),
   };
 }

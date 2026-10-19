@@ -1,28 +1,42 @@
-export function createInput(target = window) {
+const GAME_KEYS = new Set([
+  "ArrowUp",
+  "ArrowDown",
+  "ArrowLeft",
+  "ArrowRight",
+  "Space",
+]);
+
+// Замикання: стан клавіш приховано, назовні — лише методи.
+// justPressed — подія «натиснуто з останнього кроку симуляції»; її
+// очищає endStep() після кожного фіксованого кроку.
+export function createInput(target) {
   const down = new Set();
   const pressed = new Set();
 
-  function onKeyDown(e) {
-    if (!down.has(e.code)) {
-      pressed.add(e.code);
-    }
-    down.add(e.code);
-  }
-
-  function onKeyUp(e) {
-    down.delete(e.code);
-  }
+  const onKeyDown = (event) => {
+    if (GAME_KEYS.has(event.code)) event.preventDefault();
+    if (!down.has(event.code)) pressed.add(event.code);
+    down.add(event.code);
+  };
+  const onKeyUp = (event) => {
+    down.delete(event.code);
+  };
+  const onBlur = () => {
+    down.clear();
+  };
 
   target.addEventListener("keydown", onKeyDown);
   target.addEventListener("keyup", onKeyUp);
+  target.addEventListener("blur", onBlur);
 
   return {
     isDown: (code) => down.has(code),
     justPressed: (code) => pressed.has(code),
-    flush: () => pressed.clear(),
-    destroy() {
+    endStep: () => pressed.clear(),
+    dispose() {
       target.removeEventListener("keydown", onKeyDown);
       target.removeEventListener("keyup", onKeyUp);
+      target.removeEventListener("blur", onBlur);
     },
   };
 }

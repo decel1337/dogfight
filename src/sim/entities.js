@@ -1,116 +1,122 @@
+import { HomingBehavior } from "./behaviors.js";
 import { Entity } from "./entity.js";
 import { Vector2 } from "./vector.js";
 
-// Допоміжна функція для отримання довжини вектора
-function getVecLen(vec) {
-  if (typeof vec.len === "function") return vec.len();
-  if (typeof vec.length === "function") return vec.length();
-  if (typeof vec.magnitude === "function") return vec.magnitude();
-  return Math.hypot(vec.x, vec.y);
-}
+// Бонуси задані даними, а не підкласами: новий бонус = новий запис.
+export const PICKUP_EFFECTS = {
+  shield: (ship) => ship.activateShield(),
+  rapid: (ship) => ship.activateRapidFire(8),
+};
 
-// Компонент поведінки самонаведення
-export class HomingBehavior {
-  constructor(speed = 220, turnRate = 4) {
-    this.speed = speed;
-    this.turnRate = turnRate;
-  }
-
-  update(entity, dt, target) {
-    if (!target?.alive) return;
-
-    const toTarget = target.pos.sub(entity.pos);
-    const targetAngle = Math.atan2(toTarget.y, toTarget.x);
-
-    let diff = targetAngle - entity.angle;
-    while (diff < -Math.PI) diff += Math.PI * 2;
-    while (diff > Math.PI) diff -= Math.PI * 2;
-
-    entity.angle +=
-      Math.sign(diff) * Math.min(Math.abs(diff), this.turnRate * dt);
-    entity.vel = new Vector2(
-      Math.cos(entity.angle),
-      Math.sin(entity.angle),
-    ).scale(this.speed);
-  }
-}
-
-// 1. Корабель гравця
+// 1. Корабель (єдине місце, де є наслідування від Entity глибше за базу).
 export class Ship extends Entity {
-  constructor(x, y) {
+  static MAX_HP = 3;
+  static RESPAWN_DELAY = 2;
+  static FIRE_COOLDOWN = 0.18;
+  static RAPID_COOLDOWN = 0.07;
+
+  #hp = Ship.MAX_HP;
+
+  constructor(x, y, { name = "Ace" } = {}) {
     super(x, y, 14, "ship");
-    this.hp = 3;
-    this.maxHp = 3;
+    this.name = name;
     this.score = 0;
     this.thrusting = false;
+    this.dead = false;
     this.respawnTimer = 0;
-    this.spawnPos = new Vector2(x, y);
+    this.invulnerable = 0;
     this.shield = false;
+    this.rapidTimer = 0;
+    this.cooldown = 0;
   }
 
-  fire(world) {
-    if (!this.alive) return;
-    const dir = new Vector2(Math.cos(this.angle), Math.sin(this.angle));
-    const nose = this.pos.add(dir.scale(18));
-    const bulletVel = dir.scale(420).add(this.vel.scale(0.3));
-    if (world && typeof world.spawn === "function") {
-      world.spawn(new Bullet(nose.x, nose.y, bulletVel, this.angle, false));
-    }
+  get hp() {
+    return this.#hp;
   }
 
-  damage(world) {
-    if (!this.alive) return;
-    if (this.shield) {
-      this.shield = false;
-      return;
-    }
-    this.hp -= 1;
-
-    if (world && typeof world.spawn === "function") {
-      world.spawn(new Explosion(this.pos.x, this.pos.y, 25));
-    }
-
-    if (this.hp <= 0) {
-      this.alive = false;
-      this.respawnTimer = 2.0;
-    }
+  // Мертвий корабель чекає респавну і ні з чим не стикається.
+  get collidable() {
+    return !this.dead;
   }
 
-  takeDamage(world) {
-    this.damage(world);
+  activateShield() {
+    this.shield = true;
   }
 
-  collect(pickup) {
-    if (!pickup) return;
-    if (pickup.type === "shield") {
-      this.shield = true;
-    } else if (pickup.type === "heal") {
-      this.hp = Math.min(this.maxHp, this.hp + 1);
-    } else {
-      this.score += 100;
-    }
-    pickup.alive = false;
+  activateRapidFire(seconds) {
+    this.rapidTimer = seconds;
   }
 
-  addScore(points = 100) {
+  addScore(points) {
     this.score += points;
   }
 
-  heal(amount = 1) {
-    this.hp = Math.min(this.maxHp, this.hp + amount);
+  fire(world, { homing = false } = {}) {
+    if (this.dead || this.cooldown > 0) return null;
+
+    const dir = Vector2.fromAngle(this.angle);
+    const nose = this.pos.add(dir.scale(18));
+    // Куля успадковує частину швидкості корабля.
+    const vel = homing
+      ? this.vel.scale(0.3).add(dir.scale(160))
+      : dir.scale(420).add(this.vel.scale(0.3));
+    const bullet = world.spawn(
+      new Bullet(nose.x, nose.y, vel, this.angle, {
+        ownerId: this.id,
+        homing,
+      }),
+    );
+    this.cooldown =
+      this.rapidTimer > 0 ? Ship.RAPID_COOLDOWN : Ship.FIRE_COOLDOWN;
+    world.emit("fired", { shooter: this });
+    return bullet;
   }
 
-  update(dt, _world, input) {
-    if (!this.alive) {
+  // Повертає true, якщо удар «зараховано» (шкода або поглинання щитом).
+  takeDamage(world, amount = 1) {
+    if (this.dead || this.invulnerable > 0) return false;
+
+    world.emit("hit", { target: this });
+    if (this.shield) {
+      this.shield = false;
+      return true;
+    }
+
+    this.#hp = Math.max(0, this.#hp - amount);
+    if (this.#hp === 0) this.#explode(world);
+    return true;
+  }
+
+  #explode(world) {
+    this.dead = true;
+    this.thrusting = false;
+    this.respawnTimer = Ship.RESPAWN_DELAY;
+    this.vel = new Vector2(0, 0);
+    world.spawn(new Explosion(this.pos.x, this.pos.y, 28, world.rng));
+    world.emit("exploded", { target: this });
+  }
+
+  #respawn(world) {
+    const spot = world.findSafeSpot(this.radius * 6);
+    this.pos = spot;
+    this.snapPrev();
+    this.vel = new Vector2(0, 0);
+    this.#hp = Ship.MAX_HP;
+    this.dead = false;
+    this.shield = false;
+    this.invulnerable = 1.5;
+  }
+
+  update(dt, world, input) {
+    if (this.dead) {
       this.respawnTimer -= dt;
-      if (this.respawnTimer <= 0) {
-        this.alive = true;
-        this.hp = 3;
-        this.pos = new Vector2(this.spawnPos.x, this.spawnPos.y);
-        this.vel = new Vector2(0, 0);
-      }
+      if (this.respawnTimer <= 0) this.#respawn(world);
       return;
     }
+
+    this.cooldown = Math.max(0, this.cooldown - dt);
+    this.invulnerable = Math.max(0, this.invulnerable - dt);
+    this.rapidTimer = Math.max(0, this.rapidTimer - dt);
 
     if (input) {
       if (input.isDown("ArrowLeft") || input.isDown("KeyA")) {
@@ -122,27 +128,32 @@ export class Ship extends Entity {
 
       this.thrusting = input.isDown("ArrowUp") || input.isDown("KeyW");
       if (this.thrusting) {
-        const force = new Vector2(
-          Math.cos(this.angle),
-          Math.sin(this.angle),
-        ).scale(320 * dt);
-        this.vel = this.vel.add(force);
+        const push = Vector2.fromAngle(this.angle).scale(320 * dt);
+        this.vel = this.vel.add(push);
       }
+
+      if (input.isDown("Space")) this.fire(world);
+      if (input.justPressed("KeyH")) this.fire(world, { homing: true });
     }
 
     this.vel = this.vel.scale(0.985 ** (dt * 60));
-    super.update(dt, _world);
+    super.update(dt, world);
   }
 }
 
 // 2. Куля
 export class Bullet extends Entity {
-  constructor(x, y, vel, angle, homing = false) {
+  constructor(x, y, vel, angle, { ownerId = null, homing = false } = {}) {
     super(x, y, 3, "bullet");
     this.vel = vel;
     this.angle = angle;
-    this.ttl = homing ? 4.0 : 1.8;
-    this.homing = homing ? new HomingBehavior(320, 5.0) : null;
+    this.ownerId = ownerId;
+    this.ttl = homing ? 4 : 1.8;
+    if (homing) {
+      this.addBehavior(
+        new HomingBehavior({ speed: 320, turnRate: 5, targetKind: "asteroid" }),
+      );
+    }
   }
 
   update(dt, world) {
@@ -151,117 +162,80 @@ export class Bullet extends Entity {
       this.alive = false;
       return;
     }
-
-    if (this.homing && world && typeof world.ofKind === "function") {
-      let nearest = null;
-      let minDist = Infinity;
-      for (const asteroid of world.ofKind("asteroid")) {
-        if (!asteroid.alive) continue;
-        const d = getVecLen(this.pos.sub(asteroid.pos));
-        if (d < minDist) {
-          minDist = d;
-          nearest = asteroid;
-        }
-      }
-      if (nearest) {
-        this.homing.update(this, dt, nearest);
-      }
-    }
-
     super.update(dt, world);
   }
 }
 
 // 3. Астероїд
 export class Asteroid extends Entity {
-  constructor(x, y, radius = 22, homing = false) {
-    super(x, y, radius, "asteroid");
-    this.homing = homing ? new HomingBehavior(75, 1.2) : null;
+  #hp = 1;
 
-    const spd = homing ? 75 : 30 + Math.random() * 50;
-    const ang = Math.random() * Math.PI * 2;
-    this.angle = ang;
-    this.vel = new Vector2(Math.cos(ang), Math.sin(ang)).scale(spd);
+  constructor(x, y, radius = 22, { homing = false, rng = Math.random } = {}) {
+    super(x, y, radius, "asteroid");
+    const speed = homing ? 75 : 30 + rng() * 50;
+    this.angle = rng() * Math.PI * 2;
+    this.vel = Vector2.fromAngle(this.angle).scale(speed);
+    if (homing) {
+      this.addBehavior(
+        new HomingBehavior({ speed: 75, turnRate: 1.2, targetKind: "ship" }),
+      );
+    }
   }
 
-  update(dt, world) {
-    if (this.homing && world && typeof world.ofKind === "function") {
-      let ship = null;
-      for (const s of world.ofKind("ship")) {
-        if (s.alive) {
-          ship = s;
-          break;
-        }
-      }
-      if (ship) {
-        this.homing.update(this, dt, ship);
-      }
-    }
+  // true — якщо астероїд знищено цим ударом.
+  takeDamage(world, amount = 1) {
+    if (!this.alive) return false;
+    this.#hp -= amount;
+    if (this.#hp > 0) return false;
 
-    super.update(dt, world);
+    this.alive = false;
+    world.spawn(new Explosion(this.pos.x, this.pos.y, 14, world.rng));
+    world.emit("exploded", { target: this });
+    return true;
   }
 }
 
-// 4. Бонус (Pickup)
+// 4. Нерухомий бонус: не корабель і не куля, але стикається.
 export class Pickup extends Entity {
-  constructor(x, y, type = "score") {
-    super(x, y, 8, "pickup");
+  constructor(x, y, type = "shield") {
+    super(x, y, 10, "pickup");
     this.type = type;
   }
 
-  // Метод, який очікує collision.js
-  applyTo(target) {
-    if (target) {
-      if (typeof target.collect === "function") {
-        target.collect(this);
-      } else {
-        target.score = (target.score || 0) + 100;
-      }
-    }
+  applyTo(ship) {
+    PICKUP_EFFECTS[this.type]?.(ship);
     this.alive = false;
-  }
-
-  apply(target) {
-    this.applyTo(target);
-  }
-
-  onCollect(target) {
-    this.applyTo(target);
-  }
-
-  update(dt, _world) {
-    super.update(dt, _world);
   }
 }
 
-// 5. Вибух
+// 5. Вибух із частинок
 export class Explosion extends Entity {
-  constructor(x, y, count = 16) {
+  constructor(x, y, count = 16, rng = Math.random) {
     super(x, y, 0, "explosion");
     this.ttl = 0.6;
     this.particles = [];
-
     for (let i = 0; i < count; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const speed = 40 + Math.random() * 120;
+      const angle = rng() * Math.PI * 2;
+      const speed = 40 + rng() * 120;
       this.particles.push({
         pos: new Vector2(x, y),
-        vel: new Vector2(Math.cos(angle), Math.sin(angle)).scale(speed),
-        life: 0.6,
+        vel: Vector2.fromAngle(angle).scale(speed),
       });
     }
   }
 
-  update(dt, _world) {
+  get collidable() {
+    return false;
+  }
+
+  update(dt) {
     this.ttl -= dt;
     if (this.ttl <= 0) {
       this.alive = false;
       return;
     }
-
     for (const p of this.particles) {
       p.pos = p.pos.add(p.vel.scale(dt));
-      p.life -= dt;
     }
   }
 }

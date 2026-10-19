@@ -24,6 +24,10 @@ export class Vector2 {
     return Math.hypot(this.x, this.y);
   }
 
+  dist(v) {
+    return Math.hypot(this.x - v.x, this.y - v.y);
+  }
+
   normalize() {
     const len = this.length();
     return len === 0
@@ -44,7 +48,15 @@ export class Vector2 {
     return this.x * v.x + this.y * v.y;
   }
 
-  dist(v) {
-    return Math.hypot(this.x - v.x, this.y - v.y);
+  lerp(v, t) {
+    return new Vector2(this.x + (v.x - this.x) * t, this.y + (v.y - this.y) * t);
   }
+}
+
+// Інтерполяція кута по найкоротшій дузі (без «прокрутки» через ±π).
+export function lerpAngle(from, to, t) {
+  let diff = (to - from) % (Math.PI * 2);
+  if (diff > Math.PI) diff -= Math.PI * 2;
+  if (diff < -Math.PI) diff += Math.PI * 2;
+  return from + diff * t;
 }

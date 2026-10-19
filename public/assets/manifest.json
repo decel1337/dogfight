@@ -1,0 +1,12 @@
+{
+  "arena": { "width": 1200, "height": 800 },
+  "images": {
+    "ship": { "url": "/assets/ship.png", "frameWidth": 48, "frameHeight": 48 },
+    "asteroid": { "url": "/assets/asteroid.png" }
+  },
+  "sounds": {
+    "fire": "/assets/fire.wav",
+    "hit": "/assets/hit.wav",
+    "explode": "/assets/explode.wav"
+  }
+}

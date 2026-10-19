@@ -1,7 +1,7 @@
 {
   "files": {
     "ignoreUnknown": false,
-    "includes": ["src/**"]
+    "includes": ["src/**", "tests/**", "scripts/**"]
   },
   "formatter": {
     "enabled": true,

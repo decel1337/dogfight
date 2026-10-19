@@ -1,65 +1,39 @@
-import { Explosion } from "./entities.js";
+// Система зіткнень відокремлена від World: вона лише ГЕНЕРУЄ пари. Її можна
+// замінити на просторовий хеш, не чіпаючи ні World, ні сутності.
+export function* findCollisions(world) {
+  const list = [];
+  for (const entity of world) {
+    if (entity.alive && entity.collidable) list.push(entity);
+  }
 
-export function checkCollisions(world) {
-  const entities = Array.from(world);
-
-  for (let i = 0; i < entities.length; i++) {
-    const a = entities[i];
-    if (!a.alive) continue;
-
-    for (let j = i + 1; j < entities.length; j++) {
-      const b = entities[j];
-      if (!b.alive) continue;
-
-      const dist = a.pos.dist(b.pos);
-      if (dist < a.radius + b.radius) {
-        resolveCollision(a, b, world);
-      }
+  // O(n²): для арени на десятки сутностей достатньо.
+  for (let i = 0; i < list.length; i++) {
+    for (let j = i + 1; j < list.length; j++) {
+      const a = list[i];
+      const b = list[j];
+      if (!a.alive || !b.alive) continue;
+      if (a.pos.dist(b.pos) < a.radius + b.radius) yield [a, b];
     }
   }
 }
 
-function resolveCollision(a, b, world) {
-  // Куля влучає в астероїд
-  if (
-    (a.kind === "bullet" && b.kind === "asteroid") ||
-    (a.kind === "asteroid" && b.kind === "bullet")
-  ) {
-    const bullet = a.kind === "bullet" ? a : b;
-    const asteroid = a.kind === "asteroid" ? a : b;
+// Ключ — відсортована пара видів; аргументи передаються в тому ж порядку.
+const handlers = {
+  "asteroid|bullet": (asteroid, bullet, world) => {
     bullet.alive = false;
-    asteroid.alive = false;
-    world.spawn(new Explosion(asteroid.pos.x, asteroid.pos.y));
-
-    // Нараховуємо очки кораблю
-    for (const ship of world.ofKind("ship")) {
-      ship.score += 100;
+    if (asteroid.takeDamage(world)) {
+      world.get(bullet.ownerId)?.addScore(100);
     }
-  }
+  },
+  "asteroid|ship": (asteroid, ship, world) => {
+    if (ship.takeDamage(world)) asteroid.takeDamage(world);
+  },
+  "pickup|ship": (pickup, ship) => {
+    pickup.applyTo(ship);
+  },
+};
 
-  // Корабель врізається в астероїд
-  if (
-    (a.kind === "ship" && b.kind === "asteroid") ||
-    (a.kind === "asteroid" && b.kind === "ship")
-  ) {
-    const ship = a.kind === "ship" ? a : b;
-    const asteroid = a.kind === "asteroid" ? a : b;
-    if (ship.alive) {
-      ship.damage(1);
-      asteroid.alive = false;
-      world.spawn(new Explosion(ship.pos.x, ship.pos.y));
-    }
-  }
-
-  // Корабель підбирає бонус
-  if (
-    (a.kind === "ship" && b.kind === "pickup") ||
-    (a.kind === "pickup" && b.kind === "ship")
-  ) {
-    const ship = a.kind === "ship" ? a : b;
-    const pickup = a.kind === "pickup" ? a : b;
-    if (ship.alive) {
-      pickup.applyTo(ship);
-    }
-  }
+export function resolvePair(a, b, world) {
+  const [first, second] = a.kind <= b.kind ? [a, b] : [b, a];
+  handlers[`${first.kind}|${second.kind}`]?.(first, second, world);
 }

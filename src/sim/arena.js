@@ -1,7 +1,13 @@
-export function wrapBounds(entity, width, height) {
-  if (entity.pos.x < 0) entity.pos.x += width;
-  else if (entity.pos.x > width) entity.pos.x -= width;
+import { Vector2 } from "./vector.js";
 
-  if (entity.pos.y < 0) entity.pos.y += height;
-  else if (entity.pos.y > height) entity.pos.y -= height;
+const wrap = (value, size) => ((value % size) + size) % size;
+
+// Замикає арену в тор. Повертає true, якщо сутність «телепортувалась».
+export function wrapBounds(entity, width, height) {
+  const { x, y } = entity.pos;
+  if (x >= 0 && x < width && y >= 0 && y < height) return false;
+
+  entity.pos = new Vector2(wrap(x, width), wrap(y, height));
+  entity.snapPrev();
+  return true;
 }

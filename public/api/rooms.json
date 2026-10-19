@@ -1,0 +1,4 @@
+[
+  { "id": "room-alpha", "name": "Alpha Sector", "maxPlayers": 4, "arena": { "width": 1200, "height": 800 } },
+  { "id": "room-beta", "name": "Deep Space Nebula", "maxPlayers": 8, "arena": { "width": 1600, "height": 1000 } }
+]
