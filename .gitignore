@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Lab 04
+.env
+logs/
+server/logs/
+client/dist

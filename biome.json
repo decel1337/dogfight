@@ -1,7 +1,15 @@
 {
   "files": {
     "ignoreUnknown": false,
-    "includes": ["src/**", "tests/**", "scripts/**"]
+    "includes": [
+      "client/src/**",
+      "client/tests/**",
+      "client/scripts/**",
+      "client/vite.config.js",
+      "server/src/**",
+      "server/test/**",
+      "server/scripts/**"
+    ]
   },
   "formatter": {
     "enabled": true,
