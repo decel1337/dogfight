@@ -26,7 +26,7 @@ class FakeSocket {
   }
   receive(msg) {
     this.onmessage?.({
-      data: typeof msg === "string" ? msg : JSON.stringify({ v: 0, ...msg }),
+      data: typeof msg === "string" ? msg : JSON.stringify({ v: 1, ...msg }),
     });
   }
   drop(code = 1006) {
@@ -68,7 +68,8 @@ test("protocol: encode/decode та відхилення сміття від се
     "[]",
     '{"type":"chat"}',
     '{"v":9,"type":"x"}',
-    '{"v":0}',
+    '{"v":1}',
+    "\u0000",
   ]) {
     assert.equal(decode(junk), null, junk);
   }
@@ -239,4 +240,32 @@ test("черга обмежена: найстаріше витісняється
     ["3", "4", "5"],
   );
   assert.equal(dropped.length, 2);
+});
+
+test("бінарні кадри розбираються кодеком, лічильники байтів ростуть", async () => {
+  const { encodeBinary } = await import("@dogfight/shared/codec");
+  const { conn, socket } = setup();
+  const seen = [];
+  conn.on("pong", (m) => seen.push(m));
+  conn.connect();
+  socket().open();
+  assert.equal(socket().binaryType, "arraybuffer");
+
+  const frame = encodeBinary({ type: "pong", tick: 42, t: 7 });
+  socket().onmessage({ data: frame.buffer });
+  assert.deepEqual(seen, [{ type: "pong", tick: 42, t: 7 }]);
+  assert.equal(conn.stats.bytesIn, frame.byteLength);
+});
+
+test("sendGame: не ставиться в чергу й пропускається при затору", () => {
+  const { conn, socket } = setup({ bufferedLimit: 100 });
+  conn.connect();
+  assert.equal(conn.sendGame(new Uint8Array(10)), false, "офлайн — відкинуто");
+  socket().open();
+  socket().send = (data) => socket().sent.push(data);
+  assert.equal(conn.sendGame(new Uint8Array(10)), true);
+  socket().bufferedAmount = 500;
+  assert.equal(conn.sendGame(new Uint8Array(10)), false);
+  assert.equal(conn.queued, 0);
+  assert.equal(conn.stats.bytesOut, 10);
 });

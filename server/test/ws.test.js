@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import test from "node:test";
-import { CLOSE } from "../src/protocol.js";
+import { CLOSE } from "@dogfight/shared/protocol";
 import { connect, createRoom, joined, sleep, withApp } from "./helpers.js";
 
 async function open(ctx) {
@@ -75,12 +75,12 @@ test("невалідні повідомлення закривають соке�
     const room = await createRoom(ctx);
     const cases = {
       "не JSON": () => "not json",
-      "невідомий тип": () => JSON.stringify({ v: 0, type: "teleport" }),
+      "невідомий тип": () => JSON.stringify({ v: 1, type: "teleport" }),
       "без версії": () =>
         JSON.stringify({ type: "join", room: room.id, name: "A" }),
-      "chat до join": () => JSON.stringify({ v: 0, type: "chat", text: "hi" }),
+      "chat до join": () => JSON.stringify({ v: 1, type: "chat", text: "hi" }),
       "зла форма join": () =>
-        JSON.stringify({ v: 0, type: "join", room: 5, name: "A" }),
+        JSON.stringify({ v: 1, type: "join", room: 5, name: "A" }),
     };
     for (const [label, make] of Object.entries(cases)) {
       const client = await open(ctx);
@@ -114,11 +114,20 @@ test("завеликий кадр -> 1009, сервер не падає", async 
   });
 });
 
-test("бінарні кадри -> 1003", async () => {
+test("бінарні кадри до join -> 1003", async () => {
   await withApp({}, async (ctx) => {
     const client = await open(ctx);
     client.ws.send(Buffer.from([1, 2, 3]));
     assert.equal((await client.closed).code, CLOSE.UNSUPPORTED);
+  });
+});
+
+test("зламаний бінарний кадр після join -> 4002", async () => {
+  await withApp({}, async (ctx) => {
+    const room = await createRoom(ctx);
+    const client = await joined(ctx, room.id, "Ann");
+    client.ws.send(Buffer.from([1, 2, 3]));
+    assert.equal((await client.closed).code, CLOSE.INVALID_MESSAGE);
   });
 });
 

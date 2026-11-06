@@ -55,7 +55,7 @@ function client(name) {
   const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
   ws.on("error", console.error);
   const send = (type, payload) =>
-    ws.send(JSON.stringify({ v: 0, type, ...payload }));
+    ws.send(JSON.stringify({ v: 1, type, ...payload }));
   const ready = new Promise((resolve) => {
     ws.on("open", () => send("join", { room: room.id, name }));
     ws.on("message", (raw) => {

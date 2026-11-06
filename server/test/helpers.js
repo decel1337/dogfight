@@ -2,6 +2,7 @@ import { mkdtempSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { decodeBinary } from "@dogfight/shared/codec";
 import { WebSocket } from "ws";
 import { createApp } from "../src/app.js";
 import { loadConfig } from "../src/config.js";
@@ -68,8 +69,8 @@ export function connect(url, options) {
     }
   };
 
-  ws.on("message", (data) => {
-    inbox.push(JSON.parse(data.toString()));
+  ws.on("message", (data, isBinary) => {
+    inbox.push(isBinary ? decodeBinary(data) : JSON.parse(data.toString()));
     drain();
   });
   ws.on("error", () => {}); // помилки тестового клієнта не мають валити тест
@@ -90,7 +91,7 @@ export function connect(url, options) {
     inbox,
     closed,
     opened,
-    send: (msg) => ws.send(JSON.stringify({ v: 0, ...msg })),
+    send: (msg) => ws.send(JSON.stringify({ v: 1, ...msg })),
     next(type, timeoutMs = 1500) {
       return new Promise((resolve, reject) => {
         const waiter = { type, resolve };

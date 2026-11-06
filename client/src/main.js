@@ -1,15 +1,18 @@
+import { DT } from "@dogfight/shared/constants";
 import { loadAll } from "./assets/loader.js";
 import { AudioManager } from "./audio/audio.js";
 import { createInput } from "./input.js";
 import { Lobby } from "./lobby/lobby.js";
 import { createLobbyView } from "./lobby/lobbyView.js";
+import { NetGame } from "./game/netgame.js";
 import { createLoop } from "./loop.js";
 import { createConnection } from "./net/connection.js";
+import { encode } from "./net/protocol.js";
 import { beginFrame, setupCanvas } from "./render/canvas.js";
-import { drawWorld } from "./render/draw.js";
-import { Asteroid, Pickup, Ship } from "./sim/entities.js";
+import { drawScene } from "./render/draw.js";
 import { createChatView } from "./ui/chatView.js";
-import { World } from "./sim/world.js";
+import { drawNetgraph } from "./ui/netgraph.js";
+import { createNetPanel } from "./ui/netPanel.js";
 
 const canvas = document.querySelector("#gameCanvas");
 const { ctx, size } = setupCanvas(canvas);
@@ -47,86 +50,204 @@ function drawLoading(done, total, current) {
   ctx.fillRect(x + 2, y + 2, (barW - 4) * pct, barH - 4);
 }
 
-// Підключення до кімнати через WebSocket (Lab 04). Стан гри ще не
-// синхронізується — це Lab 05; поки що сервер веде склад кімнати й чат.
-function connectToRoom(room, playerName) {
+// Параметри з адресного рядка: ?predict=0 (M1: без передбачення),
+// ?brokenIntegrate=1 (integrate з Math.random), ?codec=json, ?latency=200
+// &jitter=40&drop=2 (імітація мережі), ?delay=2 (тики інтерполяції),
+// ?netgraph=1.
+const params = new URLSearchParams(location.search);
+const num = (key, fallback) => {
+  const value = Number(params.get(key));
+  return params.has(key) && Number.isFinite(value) ? value : fallback;
+};
+
+const settings = {
+  predict: params.get("predict") !== "0",
+  broken: params.get("brokenIntegrate") === "1",
+  codec: params.get("codec") === "json" ? "json" : "binary",
+  delay: num("delay", 2),
+  graph: params.get("netgraph") === "1",
+  net: {
+    latency: num("latency", 0),
+    jitter: num("jitter", 0),
+    drop: num("drop", 0),
+  },
+};
+
+function startGame({ room, playerName }, assets) {
   const chat = createChatView({
     onSend: (text) => conn.send("chat", { text }),
   });
   const scheme = location.protocol === "https:" ? "wss" : "ws";
   const conn = createConnection({ url: `${scheme}://${location.host}/ws` });
+  const input = createInput(window);
+
+  let game = null; // створюється, коли сервер відповів "joined"
+  let showGraph = settings.graph;
+  let net = { ...settings.net };
+
+  // Ігрові повідомлення (бінарні кадри або JSON-текст) — ненадійним каналом
+  // без черги; керування (join, chat, net) — із чергою.
+  const sendGame = (message) => {
+    if (message instanceof Uint8Array) conn.sendGame(message);
+    else {
+      const { type, ...rest } = message;
+      conn.sendGame(encode(type, rest));
+    }
+  };
+
+  const panel = createNetPanel({
+    initial: {
+      net,
+      predict: settings.predict,
+      delay: settings.delay,
+      graph: showGraph,
+    },
+    onNet: (value) => {
+      net = value;
+      conn.send("net", value);
+    },
+    onPredict: (on) => {
+      settings.predict = on;
+      game?.setOption("predict", on);
+    },
+    onDelay: (ticks) => {
+      settings.delay = ticks;
+      if (game) game.options.interpolationDelayTicks = ticks;
+    },
+    onGraph: (on) => {
+      showGraph = on;
+    },
+  });
+  window.addEventListener("keydown", (event) => {
+    if (event.code !== "F3") return;
+    event.preventDefault();
+    showGraph = !showGraph;
+    panel.setGraph(showGraph);
+  });
 
   // Після кожного (пере)підключення сервер нас не пам'ятає — представляємось знову.
   conn.on("open", () => {
     chat.setStatus("Підключено");
-    conn.send("join", { room: room.id, name: playerName });
+    conn.send("join", {
+      room: room.id,
+      name: playerName,
+      codec: settings.codec,
+    });
   });
-  conn.on("joined", (msg) => chat.addSystem(`Ви в кімнаті «${msg.room.name}»`));
+  conn.on("joined", (msg) => {
+    chat.addSystem(`Ви в кімнаті «${msg.room.name}»`);
+    game = new NetGame({
+      joined: msg,
+      send: sendGame,
+      play: (name) => audio.play(name),
+      options: {
+        predict: settings.predict,
+        broken: settings.broken,
+        interpolationDelayTicks: settings.delay,
+      },
+    });
+    if (net.latency || net.jitter || net.drop) conn.send("net", net);
+  });
+  conn.on("snapshot", (msg) => game?.onSnapshot(msg));
+  conn.on("events", (msg) => game?.onEvents(msg));
+  conn.on("pong", (msg) => game?.onPong(msg));
   conn.on("roster", (msg) => chat.setRoster(msg.players));
   conn.on("chat", (msg) => chat.addMessage(msg));
   conn.on("error", (msg) => chat.addSystem(`Сервер: ${msg.message}`));
-  conn.on("reconnecting", ({ attempt, delayMs }) =>
-    chat.setStatus(`Зв'язок втрачено. Спроба ${attempt} через ${delayMs} мс`),
-  );
+  conn.on("reconnecting", ({ attempt, delayMs }) => {
+    game = null;
+    chat.setStatus(`Зв'язок втрачено. Спроба ${attempt} через ${delayMs} мс`);
+  });
   conn.on("close", ({ code, willRetry }) => {
-    if (!willRetry) chat.setStatus(`Відключено (код ${code})`);
+    if (!willRetry) {
+      game = null;
+      chat.setStatus(`Відключено (код ${code})`);
+    }
+  });
+  conn.connect();
+
+  setInterval(() => game?.ping(), 500);
+
+  // Клік по canvas — постріл (панель чату й налаштувань не стріляє).
+  let clickFire = false;
+  canvas.addEventListener("click", () => {
+    clickFire = true;
   });
 
-  conn.connect();
-  return { conn, chat };
-}
+  // Один крок симуляції клієнта = один input на сервер (30 Гц).
+  const readControls = () => {
+    const left = input.isDown("ArrowLeft") || input.isDown("KeyA");
+    const right = input.isDown("ArrowRight") || input.isDown("KeyD");
+    const fire = input.justPressed("KeyH")
+      ? 2
+      : input.isDown("Space") || clickFire
+        ? 1
+        : 0;
+    clickFire = false;
+    return {
+      thrust: input.isDown("ArrowUp") || input.isDown("KeyW") ? 1 : 0,
+      turn: (right ? 1 : 0) - (left ? 1 : 0),
+      fire,
+    };
+  };
 
-function startGame({ room, playerName }, assets) {
-  const arena = room.arena ?? assets.arena ?? { width: 1200, height: 800 };
-  const world = new World({ arena });
+  // Пропускна здатність для netgraph: різниця лічильників раз на секунду.
+  const rate = {
+    at: performance.now(),
+    inBytes: 0,
+    outBytes: 0,
+    downKBs: 0,
+    upKBs: 0,
+  };
+  const updateRate = () => {
+    const now = performance.now();
+    if (now - rate.at < 1000) return;
+    const seconds = (now - rate.at) / 1000;
+    rate.downKBs = (conn.stats.bytesIn - rate.inBytes) / 1024 / seconds;
+    rate.upKBs = (conn.stats.bytesOut - rate.outBytes) / 1024 / seconds;
+    rate.inBytes = conn.stats.bytesIn;
+    rate.outBytes = conn.stats.bytesOut;
+    rate.at = now;
+  };
 
-  const ship = world.spawn(
-    new Ship(arena.width / 2, arena.height / 2, { name: playerName }),
-  );
-
-  for (let i = 0; i < 5; i++) {
-    const a = world.rng() * Math.PI * 2;
-    const dist = 220 + world.rng() * 220;
-    world.spawn(
-      new Asteroid(
-        arena.width / 2 + Math.cos(a) * dist,
-        arena.height / 2 + Math.sin(a) * dist,
-        20 + world.rng() * 12,
-        { rng: world.rng },
-      ),
-    );
-  }
-  world.spawn(new Asteroid(120, 120, 24, { homing: true, rng: world.rng }));
-  world.spawn(new Pickup(arena.width * 0.3, arena.height * 0.3, "shield"));
-  world.spawn(new Pickup(arena.width * 0.7, arena.height * 0.7, "rapid"));
-
-  // Звук підписується на події симуляції; симуляція про звук нічого не знає.
-  audio.listenTo(world.events);
-
-  const input = createInput(window);
-
-  // Баг із this (Lab 02): addEventListener("click", ship.fire) втратив би
-  // this. Обраний фікс — стрілка, що лексично зберігає ship.
-  // Клік по панелі чату не повинен стріляти, тому слухаємо лише canvas.
-  canvas.addEventListener("click", () => ship.fire(world));
-
-  connectToRoom(room, playerName);
-
+  let lastFrame = performance.now();
   const loop = createLoop({
-    step: 1 / 60,
-    simulate: (dt) => {
-      world.step(dt, input);
+    step: DT,
+    simulate: () => {
+      if (game?.ready) game.step(readControls());
       input.endStep();
     },
     render: (alpha, metrics) => {
-      drawWorld(ctx, size, world, alpha, {
-        ship,
+      const now = performance.now();
+      const frameSeconds = (now - lastFrame) / 1000;
+      lastFrame = now;
+
+      if (!game?.ready) {
+        drawCenteredText([
+          { text: "Connecting…", font: "20px monospace", dy: 0 },
+        ]);
+        return;
+      }
+      drawScene(ctx, size, game.scene(alpha, frameSeconds), {
         metrics,
         images: assets.images,
       });
+      if (showGraph) {
+        updateRate();
+        drawNetgraph(ctx, size, game.netStats(), rate);
+      }
     },
   });
   loop.start();
+
+  // Для тестів і діагностики з консолі браузера (window.__dogfight).
+  window.__dogfight = {
+    get game() {
+      return game;
+    },
+    conn,
+    settings,
+  };
 }
 
 async function boot() {

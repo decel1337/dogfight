@@ -1,5 +1,9 @@
 import { WebSocketServer } from "ws";
-import { CLOSE, encode, parseClientMessage } from "./protocol.js";
+import { TICK_RATE } from "@dogfight/shared/constants";
+import { getCodec, parseClientBinary } from "@dogfight/shared/codec";
+import { CLOSE, encode, parseClientMessage } from "@dogfight/shared/protocol";
+import { Match } from "./match.js";
+import { NetSim } from "./netsim.js";
 import { RoomFullError } from "./rooms.js";
 import { TokenBucket } from "./ratelimit.js";
 
@@ -16,6 +20,7 @@ export function attachWebSocket({ server, rooms, config, log }) {
   const clients = new Set();
   const states = new WeakMap(); // socket -> { id, player, room, bucket, ... }
   const hubs = new WeakMap(); // room -> Set<socket> (лише ті, хто зайшов)
+  const matches = new Map(); // room -> Match
   let nextSocketId = 0;
 
   // --- Upgrade: приймаємо лише /ws -------------------------------------
@@ -81,16 +86,59 @@ export function attachWebSocket({ server, rooms, config, log }) {
     return sendRaw(ws, data);
   }
 
+  // Відправка крізь імітатор мережі. Керування (chat, roster) — надійне
+  // (FIFO), ігрові повідомлення — ненадійні (можуть губитись).
+  function deliver(ws, data, { critical, reliable }) {
+    const state = states.get(ws);
+    state.netsim.pass(() => safeSend(ws, data, { critical }), { reliable });
+  }
+
   function broadcast(room, type, payload, { critical }) {
     const hub = hubs.get(room);
     if (!hub) return;
     const data = encode(type, payload); // серіалізуємо один раз для всіх
-    for (const ws of hub) safeSend(ws, data, { critical });
+    for (const ws of hub) deliver(ws, data, { critical, reliable: true });
+  }
+
+  // Кадр матчу -> кожному гравцеві: снапшот зі СВОЇМ ack і спільні події.
+  // Снапшот — повний стан, тож пропущений через повільного клієнта
+  // снапшот не критичний (наступний його замінить).
+  function broadcastFrame(room, frame) {
+    const hub = hubs.get(room);
+    if (!hub || hub.size === 0) return;
+    const encoded = { binary: null, json: null }; // events: по разу на кодек
+    for (const ws of hub) {
+      const state = states.get(ws);
+      const snapshot = {
+        type: "snapshot",
+        tick: frame.tick,
+        ack: frame.acks.get(state.player.id) ?? 0,
+        entities: frame.snapshot.entities,
+      };
+      deliver(ws, state.codec.encode(snapshot), {
+        critical: false,
+        reliable: false,
+      });
+      if (frame.events.length > 0) {
+        encoded[state.codec.name] ??= state.codec.encode({
+          type: "events",
+          tick: frame.tick,
+          events: frame.events,
+        });
+        deliver(ws, encoded[state.codec.name], {
+          critical: false,
+          reliable: false,
+        });
+      }
+    }
   }
 
   // --- Кожна нова кімната отримує слухачів -----------------------------
   rooms.on("created", (room) => {
     hubs.set(room, new Set());
+    const match = new Match({ room });
+    matches.set(room, match);
+    match.on("frame", (frame) => broadcastFrame(room, frame));
     const roster = () =>
       broadcast(room, "roster", { players: room.roster() }, { critical: true });
     room.on("join", roster);
@@ -99,6 +147,8 @@ export function attachWebSocket({ server, rooms, config, log }) {
       broadcast(room, "chat", message, { critical: false }),
     );
     room.once("closed", () => {
+      match.stop();
+      matches.delete(room);
       for (const ws of hubs.get(room) ?? [])
         closeWith(ws, CLOSE.GOING_AWAY, "room closed");
       hubs.delete(room);
@@ -118,6 +168,12 @@ export function attachWebSocket({ server, rooms, config, log }) {
         ratePerSec: config.ratePerSec,
         burst: config.rateBurst,
       }),
+      inputBucket: new TokenBucket({
+        ratePerSec: config.inputRatePerSec,
+        burst: config.inputRateBurst,
+      }),
+      codec: getCodec("binary"),
+      netsim: new NetSim(),
     };
     states.set(ws, state);
     clients.add(ws);
@@ -141,16 +197,31 @@ export function attachWebSocket({ server, rooms, config, log }) {
     });
 
     ws.on("message", (data, isBinary) => {
-      if (!state.bucket.take()) {
-        fail(ws, CLOSE.RATE_LIMITED, "rate limit exceeded");
-        return;
-      }
+      // Спершу розбираємо й перевіряємо, потім витрачаємо токени: ігрові
+      // повідомлення (input/ping) мають власне відро.
+      let parsed;
       if (isBinary) {
-        fail(ws, CLOSE.UNSUPPORTED, "binary frames are not supported");
-        return;
+        // Бінарні кадри — лише для ігрових повідомлень після join.
+        if (!state.room || state.codec.name !== "binary") {
+          fail(ws, CLOSE.UNSUPPORTED, "binary frames are not supported");
+          return;
+        }
+        if (!state.inputBucket.take()) {
+          fail(ws, CLOSE.RATE_LIMITED, "rate limit exceeded");
+          return;
+        }
+        parsed = parseClientBinary(data, { maxBytes: config.maxPayload });
+      } else {
+        parsed = parseClientMessage(data, { maxBytes: config.maxPayload });
+        const game =
+          parsed.ok &&
+          (parsed.msg.type === "input" || parsed.msg.type === "ping");
+        const bucket = game ? state.inputBucket : state.bucket;
+        if (!bucket.take()) {
+          fail(ws, CLOSE.RATE_LIMITED, "rate limit exceeded");
+          return;
+        }
       }
-
-      const parsed = parseClientMessage(data, { maxBytes: config.maxPayload });
       if (!parsed.ok) {
         log.warn("invalid message", {
           socket: state.id,
@@ -160,15 +231,36 @@ export function attachWebSocket({ server, rooms, config, log }) {
         return;
       }
 
-      if (parsed.msg.type === "join") onJoin(ws, state, parsed.msg, joinTimer);
-      else onChat(ws, state, parsed.msg);
+      const { msg } = parsed;
+      switch (msg.type) {
+        case "join":
+          onJoin(ws, state, msg, joinTimer);
+          break;
+        case "chat":
+          // Чат ходить «надійним» каналом: затримка є, втрат немає.
+          state.netsim.pass(() => onChat(ws, state, msg), { reliable: true });
+          break;
+        case "net":
+          onNet(ws, state, msg);
+          break;
+        case "input":
+        case "ping":
+          if (!state.room) {
+            fail(ws, CLOSE.INVALID_MESSAGE, "join first");
+            return;
+          }
+          state.netsim.pass(() => onGame(ws, state, msg), { reliable: false });
+          break;
+      }
     });
 
     ws.on("close", (code) => {
       clearTimeout(joinTimer);
       clients.delete(ws);
+      state.netsim.close();
       if (state.room) {
         hubs.get(state.room)?.delete(ws); // спершу виходимо з розсилки
+        matches.get(state.room)?.removePlayer(state.player.id);
         state.room.remove(state.player.id);
       }
       log.info("socket close", {
@@ -204,12 +296,29 @@ export function attachWebSocket({ server, rooms, config, log }) {
     clearTimeout(joinTimer);
     state.room = room;
     state.player = player;
+    state.codec = getCodec(msg.codec);
+
+    const match = matches.get(room);
+    const ship = match.addPlayer(player);
+    if (!match.ticker.running) match.start();
 
     // Спершу joined + roster самому гравцеві, потім він потрапляє в розсилку
     // (інші вже отримали roster через подію "join" кімнати).
-    safeSend(ws, encode("joined", { you: player, room: room.summary() }), {
-      critical: true,
-    });
+    safeSend(
+      ws,
+      encode("joined", {
+        you: player,
+        room: room.summary(),
+        ship: ship.id,
+        seed: match.seed,
+        tickRate: TICK_RATE,
+        tick: match.world.tick,
+        arena: room.arena,
+        codec: state.codec.name,
+        netsim: config.enableNetsim,
+      }),
+      { critical: true },
+    );
     safeSend(ws, encode("roster", { players: room.roster() }), {
       critical: true,
     });
@@ -227,6 +336,40 @@ export function attachWebSocket({ server, rooms, config, log }) {
       return;
     }
     state.room.chat(state.player.id, msg.text);
+  }
+
+  // Налаштування імітації мережі для цього з'єднання.
+  function onNet(ws, state, msg) {
+    if (!config.enableNetsim) {
+      fail(ws, CLOSE.INVALID_MESSAGE, "netsim disabled");
+      return;
+    }
+    state.netsim.configure(msg);
+    log.info("netsim", {
+      socket: state.id,
+      latency: msg.latency,
+      jitter: msg.jitter,
+      drop: msg.drop,
+    });
+  }
+
+  function onGame(ws, state, msg) {
+    if (ws.readyState !== ws.OPEN) return;
+    const match = matches.get(state.room);
+    if (!match) return;
+    if (msg.type === "input") {
+      match.receiveInput(state.player.id, msg);
+    } else {
+      // pong несе ехо часу клієнта й поточний тик сервера (для RTT і годинника)
+      deliver(
+        ws,
+        state.codec.encode({ type: "pong", tick: match.world.tick, t: msg.t }),
+        {
+          critical: false,
+          reliable: false,
+        },
+      );
+    }
   }
 
   // --- Heartbeat --------------------------------------------------------
@@ -256,9 +399,11 @@ export function attachWebSocket({ server, rooms, config, log }) {
     wss,
     clients,
     stats: () => ({ clients: clients.size }),
+    matchStats: () => [...matches.values()].map((m) => m.stats()),
     // Для graceful shutdown: закриваємо ввічливо, а добивати — за таймером.
     closeAll(code = CLOSE.GOING_AWAY, reason = "server shutting down") {
       clearInterval(heartbeat);
+      for (const match of matches.values()) match.stop();
       for (const ws of clients) closeWith(ws, code, reason);
     },
   };

@@ -1,134 +1,148 @@
-import { lerpAngle } from "../sim/vector.js";
 import { beginFrame } from "./canvas.js";
 import { drawFrame } from "./sprites.js";
 
-// Стан для малювання = інтерполяція між попереднім і поточним кроком.
-function renderState(entity, alpha) {
-  const pos = entity.prevPos.lerp(entity.pos, alpha);
-  const angle = lerpAngle(entity.prevAngle, entity.angle, alpha);
-  return { pos, angle };
-}
+// Біти flags кораблів і куль зі снапшота (див. специфікацію протоколу).
+const THRUST = 1;
+const SHIELD = 2;
+const DEAD = 4;
+const INVULNERABLE = 8;
+const RAPID = 16;
+const HOMING = 1;
 
-function drawShip(ctx, ship, sprite) {
+const SHIP_SIZE = 44;
+const PICKUP_COLORS = ["#58a6ff", "#3fb950"]; // shield, rapid
+
+function drawShip(ctx, ship, { sprite, mine, thrusting }) {
   if (sprite) {
-    drawFrame(ctx, sprite, ship.thrusting ? 1 : 0, 44);
-    return;
-  }
-  ctx.beginPath();
-  ctx.moveTo(20, 0);
-  ctx.lineTo(-15, -12);
-  ctx.lineTo(-8, 0);
-  ctx.lineTo(-15, 12);
-  ctx.closePath();
-  ctx.fillStyle = "#00f0ff";
-  ctx.fill();
-  ctx.strokeStyle = "#ffffff";
-  ctx.lineWidth = 2;
-  ctx.stroke();
-
-  if (ship.thrusting) {
+    drawFrame(ctx, sprite, thrusting ? 1 : 0, SHIP_SIZE);
+  } else {
     ctx.beginPath();
-    ctx.moveTo(-10, -5);
-    ctx.lineTo(-22, 0);
-    ctx.lineTo(-10, 5);
-    ctx.strokeStyle = "#ff7b00";
+    ctx.moveTo(20, 0);
+    ctx.lineTo(-15, -12);
+    ctx.lineTo(-8, 0);
+    ctx.lineTo(-15, 12);
+    ctx.closePath();
+    ctx.fillStyle = mine ? "#00f0ff" : "#ff9f43";
+    ctx.fill();
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    if (thrusting) {
+      ctx.beginPath();
+      ctx.moveTo(-10, -5);
+      ctx.lineTo(-22, 0);
+      ctx.lineTo(-10, 5);
+      ctx.strokeStyle = "#ff7b00";
+      ctx.stroke();
+    }
+  }
+  if (ship.flags & SHIELD) {
+    ctx.beginPath();
+    ctx.arc(0, 0, 22, 0, Math.PI * 2);
+    ctx.strokeStyle = "#58a6ff";
+    ctx.lineWidth = 2;
     ctx.stroke();
   }
 }
 
-function drawEntity(ctx, entity, alpha, images) {
-  const { pos, angle } = renderState(entity, alpha);
+function drawRecord(ctx, e, images, mine = false) {
   ctx.save();
-  ctx.translate(pos.x, pos.y);
-
-  switch (entity.kind) {
-    case "ship": {
-      if (entity.dead) break;
-      ctx.rotate(angle);
-      // Блимання під час невразливості після респавну.
-      if (entity.invulnerable > 0 && Math.floor(entity.invulnerable * 10) % 2) {
-        ctx.globalAlpha = 0.35;
-      }
-      drawShip(ctx, entity, images.ship);
-      if (entity.shield) {
-        ctx.beginPath();
-        ctx.arc(0, 0, entity.radius + 8, 0, Math.PI * 2);
-        ctx.strokeStyle = "#58a6ff";
-        ctx.lineWidth = 2;
-        ctx.stroke();
-      }
+  ctx.translate(e.x, e.y);
+  switch (e.kind) {
+    case 1: {
+      if (e.flags & DEAD) break;
+      ctx.rotate(e.angle);
+      if (e.flags & INVULNERABLE) ctx.globalAlpha = 0.45;
+      const thrusting = e.thrusting ?? (e.flags & THRUST) !== 0;
+      drawShip(ctx, e, { sprite: images.ship, mine, thrusting });
       break;
     }
-    case "bullet": {
+    case 2:
       ctx.beginPath();
-      ctx.arc(0, 0, entity.radius, 0, Math.PI * 2);
-      ctx.fillStyle = entity.behaviors.length > 0 ? "#ffd33d" : "#ff3860";
+      ctx.arc(0, 0, 3, 0, Math.PI * 2);
+      ctx.fillStyle = e.flags & HOMING ? "#ffd33d" : "#ff3860";
       ctx.fill();
       break;
-    }
-    case "asteroid": {
-      const sprite = images.asteroid;
-      if (sprite) {
-        ctx.rotate(angle);
-        drawFrame(ctx, sprite, 0, entity.radius * 2);
+    case 3: {
+      const homing = (e.flags & HOMING) !== 0;
+      if (images.asteroid && !homing) {
+        ctx.rotate(e.angle);
+        drawFrame(ctx, images.asteroid, 0, e.a * 2);
       } else {
         ctx.beginPath();
-        ctx.arc(0, 0, entity.radius, 0, Math.PI * 2);
-        ctx.strokeStyle = entity.behaviors.length > 0 ? "#f85149" : "#8b949e";
+        ctx.arc(0, 0, e.a, 0, Math.PI * 2);
+        ctx.strokeStyle = homing ? "#f85149" : "#8b949e";
         ctx.lineWidth = 2;
         ctx.stroke();
       }
       break;
     }
-    case "pickup": {
+    case 4:
       ctx.beginPath();
-      ctx.arc(0, 0, entity.radius, 0, Math.PI * 2);
-      ctx.strokeStyle = entity.type === "shield" ? "#58a6ff" : "#3fb950";
+      ctx.arc(0, 0, 10, 0, Math.PI * 2);
+      ctx.strokeStyle = PICKUP_COLORS[e.a] ?? "#ffffff";
       ctx.lineWidth = 3;
       ctx.stroke();
       break;
-    }
-    case "explosion": {
-      ctx.translate(-pos.x, -pos.y);
-      ctx.fillStyle = "#ffa657";
-      ctx.globalAlpha = Math.max(0, entity.ttl / 0.6);
-      for (const p of entity.particles) {
-        ctx.fillRect(p.pos.x - 1.5, p.pos.y - 1.5, 3, 3);
-      }
-      break;
-    }
     default:
       break;
   }
   ctx.restore();
 }
 
-function drawHud(ctx, { ship, metrics, world, size }) {
+function drawEffect(ctx, effect) {
+  ctx.save();
+  if (effect.type === "explosion") {
+    const t = effect.age / 0.6;
+    ctx.globalAlpha = Math.max(0, 1 - t);
+    ctx.fillStyle = "#ffa657";
+    for (const p of effect.particles) {
+      const d = p.speed * effect.age;
+      ctx.fillRect(
+        effect.x + Math.cos(p.angle) * d - 1.5,
+        effect.y + Math.sin(p.angle) * d - 1.5,
+        3,
+        3,
+      );
+    }
+  } else {
+    ctx.globalAlpha = Math.max(0, 1 - effect.age / 0.6);
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(effect.x, effect.y, 6 + effect.age * 40, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawHud(ctx, size, scene, metrics) {
+  const me = scene.me;
   ctx.save();
   ctx.font = "14px monospace";
   ctx.fillStyle = "#ffffff";
   ctx.textAlign = "left";
-
   const lines = [
     `Steps/s: ${metrics.stepsPerSecond}`,
     `FPS: ${metrics.fps}`,
-    `Frame: ${metrics.frameMs.toFixed(1)} ms`,
-    `Entities: ${world.size}`,
-    `Score: ${ship.score}`,
-    `HP: ${ship.hp}/3${ship.shield ? "  [SHIELD]" : ""}${
-      ship.rapidTimer > 0 ? `  [RAPID ${ship.rapidTimer.toFixed(1)}s]` : ""
-    }`,
+    `Entities: ${scene.entities.length + (me ? 1 : 0)}`,
   ];
+  if (me) {
+    lines.push(
+      `Score: ${me.c}`,
+      `HP: ${me.a}/3${me.flags & SHIELD ? "  [SHIELD]" : ""}${me.flags & RAPID ? "  [RAPID]" : ""}`,
+    );
+  }
   lines.forEach((text, i) => {
     ctx.fillText(text, 20, 30 + i * 20);
   });
 
-  if (ship.dead) {
+  if (me && me.flags & DEAD) {
     ctx.textAlign = "center";
     ctx.font = "bold 24px monospace";
     ctx.fillStyle = "#f85149";
     ctx.fillText(
-      `DESTROYED — respawn in ${ship.respawnTimer.toFixed(1)}s`,
+      `DESTROYED — respawn in ${(me.b / 30).toFixed(1)}s`,
       size.width / 2,
       size.height / 2,
     );
@@ -136,12 +150,12 @@ function drawHud(ctx, { ship, metrics, world, size }) {
   ctx.restore();
 }
 
-// Арена вписується у вікно зі збереженням пропорцій (розмір арени
-// береться з кімнати/маніфесту і може не збігатися з вікном).
-export function drawWorld(ctx, size, world, alpha, hud) {
+// Малюємо СЦЕНУ (плоскі записи зі снапшотів), а не об'єкти симуляції: у
+// клієнта більше немає власного світу, лише те, що сказав сервер.
+export function drawScene(ctx, size, scene, { metrics, images }) {
   beginFrame(ctx, size);
 
-  const { width, height } = world.arena;
+  const { width, height } = scene.arena;
   const scale = Math.min(size.width / width, size.height / height);
   const offsetX = (size.width - width * scale) / 2;
   const offsetY = (size.height - height * scale) / 2;
@@ -153,15 +167,22 @@ export function drawWorld(ctx, size, world, alpha, hud) {
   ctx.strokeStyle = "#30363d";
   ctx.lineWidth = 2;
   ctx.strokeRect(0, 0, width, height);
-
   ctx.beginPath();
   ctx.rect(0, 0, width, height);
   ctx.clip();
 
-  for (const entity of world) {
-    if (entity.alive) drawEntity(ctx, entity, alpha, hud.images);
+  for (const e of scene.entities) drawRecord(ctx, e, images);
+  for (const b of scene.localBullets) {
+    drawRecord(
+      ctx,
+      { kind: 2, flags: 0, x: b.x, y: b.y, angle: b.angle },
+      images,
+    );
   }
+  if (scene.me) drawRecord(ctx, scene.me, images, true);
+  for (const effect of scene.effects) drawEffect(ctx, effect);
   ctx.restore();
 
-  drawHud(ctx, { ...hud, world, size });
+  drawHud(ctx, size, scene, metrics);
+  return { scale, offsetX, offsetY };
 }

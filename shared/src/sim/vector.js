@@ -1,3 +1,6 @@
+import { cos, sin } from "./dmath.js";
+// Незмінний 2D-вектор: кожен метод повертає новий. Для стабільності між
+// рушіями вживаємо Math.sqrt (точно округлюється за IEEE 754), а не Math.hypot.
 export class Vector2 {
   constructor(x = 0, y = 0) {
     this.x = x;
@@ -5,7 +8,7 @@ export class Vector2 {
   }
 
   static fromAngle(angle) {
-    return new Vector2(Math.cos(angle), Math.sin(angle));
+    return new Vector2(cos(angle), sin(angle));
   }
 
   add(v) {
@@ -21,11 +24,13 @@ export class Vector2 {
   }
 
   length() {
-    return Math.hypot(this.x, this.y);
+    return Math.sqrt(this.x * this.x + this.y * this.y);
   }
 
   dist(v) {
-    return Math.hypot(this.x - v.x, this.y - v.y);
+    const dx = this.x - v.x;
+    const dy = this.y - v.y;
+    return Math.sqrt(dx * dx + dy * dy);
   }
 
   normalize() {
@@ -36,8 +41,8 @@ export class Vector2 {
   }
 
   rotate(angle) {
-    const cos = Math.cos(angle);
-    const sin = Math.sin(angle);
+    const cos = cos(angle);
+    const sin = sin(angle);
     return new Vector2(
       this.x * cos - this.y * sin,
       this.x * sin + this.y * cos,
@@ -56,10 +61,20 @@ export class Vector2 {
   }
 }
 
+const TWO_PI = Math.PI * 2;
+
+// Кут у діапазон [-π, π].
+export function normalizeAngle(angle) {
+  let a = angle;
+  while (a > Math.PI) a -= TWO_PI;
+  while (a < -Math.PI) a += TWO_PI;
+  return a;
+}
+
 // Інтерполяція кута по найкоротшій дузі (без «прокрутки» через ±π).
 export function lerpAngle(from, to, t) {
-  let diff = (to - from) % (Math.PI * 2);
-  if (diff > Math.PI) diff -= Math.PI * 2;
-  if (diff < -Math.PI) diff += Math.PI * 2;
+  let diff = (to - from) % TWO_PI;
+  if (diff > Math.PI) diff -= TWO_PI;
+  if (diff < -Math.PI) diff += TWO_PI;
   return from + diff * t;
 }

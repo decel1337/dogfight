@@ -1,7 +1,8 @@
+import { atan2 } from "./dmath.js";
 import { Vector2 } from "./vector.js";
 
 // Компонент самонаведення. Не залежить від типу сутності: його можна
-// причепити і до кулі, і до астероїда (Lab 02, M4).
+// причепити і до кулі, і до астероїда. Ціль шукає за видом (`targetKind`).
 export class HomingBehavior {
   constructor({ speed = 220, turnRate = 4, targetKind = "asteroid" } = {}) {
     this.speed = speed;
@@ -11,7 +12,7 @@ export class HomingBehavior {
 
   findTarget(entity, world) {
     let nearest = null;
-    let best = Infinity;
+    let best = Number.POSITIVE_INFINITY;
     for (const candidate of world.ofKind(this.targetKind)) {
       if (!candidate.alive || !candidate.collidable) continue;
       const d = entity.pos.dist(candidate.pos);
@@ -28,7 +29,7 @@ export class HomingBehavior {
     if (!target) return;
 
     const to = target.pos.sub(entity.pos);
-    let diff = Math.atan2(to.y, to.x) - entity.angle;
+    let diff = atan2(to.y, to.x) - entity.angle;
     while (diff < -Math.PI) diff += Math.PI * 2;
     while (diff > Math.PI) diff -= Math.PI * 2;
 

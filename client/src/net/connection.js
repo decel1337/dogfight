@@ -29,6 +29,8 @@ export function createConnection({
   let attempt = 0;
   let retryTimer = null;
   let intentionalClose = false;
+  // Лічильники для netgraph (байти — корисне навантаження кадрів).
+  const stats = { bytesIn: 0, bytesOut: 0, messagesIn: 0, messagesOut: 0 };
 
   const emit = (type, payload) => {
     for (const handler of handlers.get(type) ?? []) handler(payload);
@@ -36,6 +38,8 @@ export function createConnection({
 
   function open() {
     socket = new WebSocketImpl(url);
+    // Бінарні кадри хочемо як ArrayBuffer (а не Blob): DataView читає синхронно.
+    socket.binaryType = "arraybuffer";
 
     socket.onopen = () => {
       attempt = 0; // успішне з'єднання скидає backoff
@@ -48,6 +52,8 @@ export function createConnection({
     };
 
     socket.onmessage = (event) => {
+      stats.bytesIn += event.data.byteLength ?? event.data.length;
+      stats.messagesIn++;
       const msg = decode(event.data);
       if (msg === null) {
         emit("bad-message", event.data);
@@ -84,6 +90,7 @@ export function createConnection({
   }
 
   return {
+    stats,
     connect() {
       intentionalClose = false;
       if (socket === null && retryTimer === null) open();
@@ -95,6 +102,8 @@ export function createConnection({
     send(type, payload, { critical = true } = {}) {
       const data = encode(type, payload);
       if (socket?.readyState === READY.OPEN) {
+        stats.bytesOut += data.length;
+        stats.messagesOut++;
         if (!critical && socket.bufferedAmount > bufferedLimit) {
           emit("dropped", { type, reason: "buffered" });
           return false;
@@ -111,6 +120,20 @@ export function createConnection({
         emit("dropped", { type, reason: "queue-full" });
       }
       queue.push(data);
+      return true;
+    },
+
+    // Ігрове повідомлення вже закодоване (Uint8Array або рядок). Ніколи не
+    // ставиться в чергу: застарілий input після reconnect лише зашкодить.
+    sendGame(data) {
+      if (socket?.readyState !== READY.OPEN) return false;
+      if (socket.bufferedAmount > bufferedLimit) {
+        emit("dropped", { type: "game", reason: "buffered" });
+        return false;
+      }
+      stats.bytesOut += data.byteLength ?? data.length;
+      stats.messagesOut++;
+      socket.send(data);
       return true;
     },
 

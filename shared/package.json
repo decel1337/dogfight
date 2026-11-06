@@ -1,0 +1,18 @@
+{
+	"name": "@dogfight/shared",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"description": "Код, спільний для клієнта й сервера: симуляція, PRNG, протокол, кодеки, netcode",
+	"exports": {
+		"./constants": "./src/constants.js",
+		"./prng": "./src/prng.js",
+		"./sim": "./src/sim/index.js",
+		"./protocol": "./src/protocol/index.js",
+		"./codec": "./src/codec/index.js",
+		"./netcode": "./src/netcode/index.js"
+	},
+	"scripts": {
+		"test": "node --test \"test/**/*.test.js\""
+	}
+}

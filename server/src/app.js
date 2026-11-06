@@ -182,6 +182,12 @@ export function createApp({ config, log = silentLogger }) {
       });
     }
 
+    // Діагностика такту: тривалість тика й «тремтіння» таймера (мс).
+    if (pathname === "/api/stats") {
+      allow(req, ["GET", "HEAD"]);
+      return sendJson(res, 200, { tickRate: 30, matches: ws.matchStats() });
+    }
+
     if (pathname === "/api/rooms") {
       allow(req, ["GET", "HEAD", "POST"]);
       if (req.method !== "POST") return sendJson(res, 200, rooms.list());

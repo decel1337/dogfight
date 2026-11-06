@@ -12,6 +12,7 @@
 		"test": "node --test \"test/**/*.test.js\""
 	},
 	"dependencies": {
+		"@dogfight/shared": "*",
 		"ws": "^8.18.0"
 	}
 }

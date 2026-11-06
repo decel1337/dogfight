@@ -58,8 +58,13 @@ export function loadConfig(env = process.env) {
     joinTimeoutMs: int("JOIN_TIMEOUT_MS", 5000, 10, 60_000),
     heartbeatMs: int("HEARTBEAT_MS", 15_000, 10, 300_000),
     maxMissedPongs: int("MAX_MISSED_PONGS", 2, 1, 10),
+    // chat/керування й ігрові повідомлення мають окремі відра: потік input
+    // (30/с) не повинен з'їдати ліміт чату, і навпаки.
     ratePerSec: int("RATE_PER_SEC", 10, 1, 1000),
     rateBurst: int("RATE_BURST", 20, 1, 10_000),
+    inputRatePerSec: int("INPUT_RATE_PER_SEC", 60, 1, 10_000),
+    inputRateBurst: int("INPUT_RATE_BURST", 120, 1, 100_000),
+    enableNetsim: bool("ENABLE_NETSIM", true),
     bufferedLimit: int("BUFFERED_LIMIT", 1_048_576, 1024, 1_073_741_824),
 
     shutdownTimeoutMs: int("SHUTDOWN_TIMEOUT_MS", 5000, 100, 120_000),

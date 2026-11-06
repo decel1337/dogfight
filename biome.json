@@ -8,7 +8,10 @@
       "client/vite.config.js",
       "server/src/**",
       "server/test/**",
-      "server/scripts/**"
+      "server/scripts/**",
+      "shared/src/**",
+      "shared/test/**",
+      "shared/scripts/**"
     ]
   },
   "formatter": {
