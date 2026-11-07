@@ -7,12 +7,17 @@
 		"node": ">=22.12"
 	},
 	"scripts": {
-		"dev": "node --env-file-if-exists=.env --watch src/index.js",
-		"start": "node --env-file-if-exists=.env src/index.js",
-		"test": "node --test \"test/**/*.test.js\""
+		"dev": "node --experimental-strip-types --disable-warning=ExperimentalWarning --env-file-if-exists=.env --watch src/index.ts",
+		"start": "node --experimental-strip-types --disable-warning=ExperimentalWarning --env-file-if-exists=.env src/index.ts",
+		"test": "node --experimental-strip-types --disable-warning=ExperimentalWarning --test \"test/**/*.test.ts\"",
+		"typecheck": "tsc --noEmit -p tsconfig.json"
 	},
 	"dependencies": {
 		"@dogfight/shared": "*",
-		"ws": "^8.18.0"
+		"ws": "^8.18.0",
+		"zod": "^3.25.76"
+	},
+	"devDependencies": {
+		"@types/ws": "^8.5.0"
 	}
 }

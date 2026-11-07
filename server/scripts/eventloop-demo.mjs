@@ -21,7 +21,7 @@ const freePort = () =>
   });
 
 const port = await freePort();
-const server = spawn("node", ["src/index.js"], {
+const server = spawn("node", ["src/index.ts"], {
   cwd: ROOT,
   env: {
     ...process.env,

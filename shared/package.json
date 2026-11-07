@@ -5,14 +5,20 @@
 	"type": "module",
 	"description": "Код, спільний для клієнта й сервера: симуляція, PRNG, протокол, кодеки, netcode",
 	"exports": {
-		"./constants": "./src/constants.js",
-		"./prng": "./src/prng.js",
-		"./sim": "./src/sim/index.js",
-		"./protocol": "./src/protocol/index.js",
-		"./codec": "./src/codec/index.js",
-		"./netcode": "./src/netcode/index.js"
+		"./constants": "./src/constants.ts",
+		"./prng": "./src/prng.ts",
+		"./sim": "./src/sim/index.ts",
+		"./protocol": "./src/protocol/index.ts",
+		"./codec": "./src/codec/index.ts",
+		"./netcode": "./src/netcode/index.ts",
+		"./types": "./src/types.ts",
+		"./emitter": "./src/emitter.ts"
 	},
 	"scripts": {
-		"test": "node --test \"test/**/*.test.js\""
+		"test": "node --experimental-strip-types --disable-warning=ExperimentalWarning --test \"test/**/*.test.ts\"",
+		"typecheck": "tsc --noEmit -p tsconfig.json"
+	},
+	"dependencies": {
+		"zod": "^3.25.76"
 	}
 }

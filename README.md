@@ -1,10 +1,10 @@
-# Dogfight — Labs 01–05
+# Dogfight — Labs 01–06
 
 ![Два вікна: ліве з RTT 200 мс і джитером 40 мс (із передбаченням), праве — локальне](docs/demo.gif)
 
 *Два клієнти в одній кімнаті: ліворуч — з імітацією RTT 200 мс ± 40 мс, праворуч — без затримки. Власний корабель відгукується одразу (передбачення), чужі плавні (інтерполяція).*
 
-Мультиплеєрна арена: клієнт на Canvas (Labs 01–03), сервер на Node.js з кімнатами, чатом і логами матчів (Lab 04), **авторитетний сервер з передбаченням, реконсиляцією та інтерполяцією на клієнті (Lab 05)**. Репозиторій — npm workspaces: `shared/`, `client/`, `server/`.
+Мультиплеєрна арена: клієнт на Canvas (Labs 01–03), сервер на Node.js з кімнатами, чатом і логами матчів (Lab 04), авторитетний сервер з передбаченням, реконсиляцією та інтерполяцією на клієнті (Lab 05), **увесь код — на суворому TypeScript (Lab 06)**. Репозиторій — npm workspaces: `shared/`, `client/`, `server/`.
 
 ## Запуск
 
@@ -17,13 +17,16 @@ npm run dev:server       # Node-сервер: http://127.0.0.1:3000
 npm run dev:client       # Vite: http://localhost:5173 (проксі /api і /ws на :3000)
 
 npm run build && npm start   # production: Node віддає зібраний client/dist
-npm test                 # shared 47 + client 34 + server 82 тестів (node:test)
+npm run typecheck        # tsc --noEmit у shared, server, client (strict)
+npm test                 # shared 47 + client 34 + server 84 тестів (node:test, запускаються як .ts)
 npm run lint             # Biome
 ```
 
 Для гри відкрийте два вікна на `http://localhost:5173`, у кожному клікніть по екрану, в одному створіть кімнату (**CREATE ROOM**), в обох натисніть **JOIN**. `Enter` — писати в чат.
 
 Керування: `W/↑` — тяга, `A/D` або `←/→` — поворот, `Space` або клік по полю — постріл, `H` — самонавідна куля. `/?sequential` — завантажувати ассети по черзі (Lab 03).
+
+Сервер і тести запускаються напряму з `.ts` (Node ≥ 22.6, `--experimental-strip-types`: прапорець уже прописано в скриптах `package.json`), клієнт збирає Vite; компілятор `tsc` лише перевіряє типи (`noEmit`).
 
 Параметри мережі (Lab 05): `?netgraph=1` (також `F3`), `?latency=200&jitter=40&drop=2` (імітація для цього з'єднання), `?predict=0` (без передбачення), `?brokenIntegrate=1` (клієнтський integrate з `Math.random`), `?codec=json`, `?delay=2` (затримка інтерполяції в тиках). Те саме можна змінювати в панелі внизу ліворуч.
 
@@ -39,40 +42,43 @@ node server/scripts/backpressure-loop.mjs   # Lab 04: pipeline проти ігн
 node shared/scripts/codec-bench.mjs         # Lab 05: JSON проти бінарного протоколу
 node shared/scripts/prove-it.mjs            # Lab 05: endianness, таймери, детермінізм
 node shared/scripts/determinism-browser.mjs # Lab 05: хеш світу Node == Chromium (потрібні playwright, esbuild)
+node --experimental-strip-types shared/scripts/ts-prove-it.mjs  # Lab 06: що TypeScript робить у рантаймі
 ```
 
 ## Структура
 
 ```text
-shared/                  код, спільний для клієнта й сервера (Lab 05)
+shared/                  код, спільний для клієнта й сервера (Lab 05; типи й zod-схеми — Lab 06)
   src/sim/               детермінована симуляція: integrate, World, сутності, dmath
-  src/protocol/          версійований протокол, валідація, коди закриття
-  src/codec/             binary.js (DataView) і json.js — один інтерфейс
+  src/types.ts           брендовані EntityId/PlayerId, assertNever
+  src/emitter.ts         типізований Emitter<Events>
+  src/protocol/          zod-схеми = єдине джерело правди; типи виводяться (z.infer)
+  src/codec/             binary.ts (DataView) і json.ts — один інтерфейс
   src/netcode/           Predictor, SnapshotBuffer, ServerClock
   test/ scripts/         47 тестів; бенчмарк кодека, prove-it
 client/                  Vite-застосунок (Labs 01–03 + мережа Lab 04–05)
-  src/game/netgame.js    передбачення + інтерполяція + події + статистика
-  src/ui/netgraph.js     netgraph; netPanel.js — панель latency/jitter/drop
-  src/main.js            завантаження -> лобі -> гра -> підключення до кімнати
-  src/loop.js input.js   фіксований крок, замикання для клавіатури
+  src/game/netgame.ts    передбачення + інтерполяція + події + статистика
+  src/ui/netgraph.ts     netgraph; netPanel.ts — панель latency/jitter/drop
+  src/main.ts            завантаження -> лобі -> гра -> підключення до кімнати
+  src/loop.ts input.ts   фіксований крок, замикання для клавіатури
   src/render/ audio/     canvas, інтерполяція, спрайти, звук
-  src/assets/loader.js   fetchJson, withRetry, loadAll
+  src/assets/loader.ts   fetchJson, withRetry, loadAll
   src/lobby/             Lobby (EventTarget) + lobbyView; тепер працює з /api/rooms
-  src/net/               protocol.js, connection.js (черга send + reconnect)
-  src/ui/chatView.js     склад кімнати й чат
-  vite.config.js         проксі /api і /ws на Node-сервер
+  src/net/               protocol.ts, connection.ts (черга send + reconnect)
+  src/ui/chatView.ts     склад кімнати й чат
+  vite.config.ts         проксі /api і /ws на Node-сервер
 server/
-  src/index.js           запуск, graceful shutdown, фатальні помилки
-  src/config.js          PORT, HOST, LOG_DIR... з env, валідація
-  src/app.js             node:http: API, статика, стрімінг реплеїв
-  src/static.js          MIME, захист від path traversal
-  src/rooms.js           Room extends EventEmitter, RoomManager
-  src/match.js ticker.js авторитетний світ кімнати, фіксований 30 Гц такт
-  src/netsim.js          імітатор latency/jitter/втрат для з'єднання
-  src/ws.js              життєвий цикл сокета, heartbeat, rate limit, slow-client
-  src/ratelimit.js       token bucket
-  src/log/matchlog.js    Transform: події -> NDJSON -> файл (pipeline)
-  src/log/replay.js      async-генератор над NDJSON-файлом
+  src/index.ts           запуск, graceful shutdown, фатальні помилки
+  src/config.ts          PORT, HOST, LOG_DIR... з env, валідація
+  src/app.ts             node:http: API, статика, стрімінг реплеїв
+  src/static.ts          MIME, захист від path traversal
+  src/rooms.ts           Room extends EventEmitter, RoomManager
+  src/match.ts ticker.ts авторитетний світ кімнати, фіксований 30 Гц такт
+  src/netsim.ts          імітатор latency/jitter/втрат для з'єднання
+  src/ws.ts              життєвий цикл сокета, heartbeat, rate limit, slow-client
+  src/ratelimit.ts       token bucket
+  src/log/matchlog.ts    Transform: події -> NDJSON -> файл (pipeline)
+  src/log/replay.ts      async-генератор над NDJSON-файлом
   test/                  82 тести, scripts/ — відтворювані експерименти
 docs/                    rss-backpressure.svg / .csv
 ```
@@ -166,7 +172,7 @@ Entity
 
 # Lab 03 — Asynchronous JavaScript
 
-## Пайплайн ассетів (`client/src/assets/loader.js`)
+## Пайплайн ассетів (`client/src/assets/loader.ts`)
 
 * Маніфест (`public/assets/manifest.json`) описує спрайт-лист корабля (2 кадри: без і з полум'ям), зображення астероїда, три звуки та розмір арени.
 * `fetchJson` перевіряє `response.ok` (fetch **не** відхиляється на 404/500) і окремо читає тіло; битий JSON → `BadPayloadError`.
@@ -550,3 +556,114 @@ Error: handler забув обробити помилку
 - Додано відскок при зіткненнях (`knockback`), щоб реконсиляція мала що виправляти.
 - Не реалізовано: надлишкові input, стиснення/дельти снапшотів, інтерес-менеджмент, lag compensation пострілів, бот-клієнти.
 - Імітація мережі застосовується на сервері (`ENABLE_NETSIM=0` вимикає).
+
+---
+
+# Lab 06 — TypeScript: типи як контракт між клієнтом і сервером
+
+Увесь проєкт (`shared/`, `server/`, `client/`) переведено на **TypeScript у режимі strict**, а поведінка лишилась тією самою: усі 165 тестів (47 + 84 + 34) проходять, а повний сценарій у Chromium (лобі → кімната → гра → рух корабля, без помилок у консолі) і хеш світу Node == Chromium (`3408780942`) перевірено після міграції.
+
+## Що зроблено
+
+**M1. Інструменти й суворість.** `tsconfig.base.json`: `strict`, `noUncheckedIndexedAccess`, `noImplicitOverride`, `noImplicitReturns`, `noUnusedLocals/Parameters`, `verbatimModuleSyntax`, `isolatedModules`, **`erasableSyntaxOnly`** (без `enum`, `namespace`, параметрів-властивостей — лише синтаксис, який можна просто стерти). Завдяки цьому той самий `.ts`-код виконують Node (`--experimental-strip-types`), Vite і `tsc --noEmit` — без окремого кроку компіляції для сервера й тестів. Імпорти мають явні `.ts`-розширення (`allowImportingTsExtensions`). `tsc` ніколи нічого не емітить — він лише перевіряє.
+
+**M2. Протокол: схеми як джерело правди.** `shared/src/protocol/index.ts` описує **кожне** повідомлення в обох напрямках схемою [zod](https://zod.dev); TypeScript-типи виводяться зі схем (`z.infer`), тож тип і валідація не можуть розійтись:
+
+```ts
+export const ClientMessageSchema = z.discriminatedUnion("type", [JoinSchema, ChatSendSchema, NetSchema, InputSchema, PingSchema]);
+export type ClientMessage = z.infer<typeof ClientMessageSchema>;
+```
+
+На межі довіри (WebSocket, HTTP-тіло, змінні середовища) дані мають тип `unknown` і проходять `safeParse`/ручне звуження: `parseClientMessage`, `decodeServerJson`, `decodeBinary` (кидає `CodecError`), `loadConfig` (zod-схема env), `validateRoomInput`, `parseManifest`, `parseRooms`. Усередині системи значення вже типізовані, повторних перевірок немає. Старий `encode(type, payload)` (де тип і тіло ніяк не пов'язані) замінено на `encode(message)`.
+
+**M3. Сервер і клієнт.** Типізовані емітери (`Room`/`RoomManager`/`Match` — `EventEmitter<Events>` з `@types/node`; клієнтський `Emitter<ConnectionEvents>`), `catch (error: unknown)` всюди, вичерпні `switch` з `assertNever` (диспетчер сервера, `connection.dispatch`, малювання сутностей), DOM-елементи — через `query(root, selector, HTMLInputElement)` з `instanceof`-звуженням замість `as`.
+
+**M4 (фреймворки).** Свідомо **не робив**: Vite + чистий Canvas лишаються. Міграція Lab 06 — про типи; переписування UI на React/Vue змішало б дві зміни, і тести перестали б доводити «поведінка не змінилась».
+
+**CI.** `.github/workflows/typecheck.yml`: `npm ci` → `typecheck` → `test` → `lint` → `build` на кожен push/PR.
+
+## Що знайшов TypeScript (реальні помилки, а не косметика)
+
+1. **Використання змінної до оголошення в `Vector2.rotate`:** під час механічної заміни `Math.cos` на детерміновану `cos` вийшло `const cos = cos(angle)` — локальна змінна затінила функцію (у рантаймі це `ReferenceError`). Компілятор показує це як TS2448 («використано до оголошення»); змінні перейменовано на `c`/`s`. Без перевірки типів такий рядок живе до першого виклику `rotate`.
+2. **Тест викликав неіснуючі повідомлення протоколу:** `conn.send("move", { x: 1 })` — типу `move` у протоколі немає; тест «проходив», бо `send` приймав довільний рядок. Тепер `send(message: ClientMessage)` такого не прийме.
+3. **Тест ростера з `players: [1, 2]`** — сервер надсилає `{id, name}`, а тест подавав числа. Схема в `decode` це відкидає, тож у тесті тепер коректні гравці.
+4. **Кімнати з `arena: {}` у тестах** — фактично невалідна арена, яку ніхто не перевіряв; тепер `Arena` обов'язкова.
+5. **`noUncheckedIndexedAccess`:** численні `arr[i].x`, `queue.shift().seq`, `PICKUP_TYPES[n]` могли дати `undefined` (порожня черга, індекс поза межами) — додано явні перевірки (`if (!input) break`, `?? fallback`).
+6. **`log.firstChild.remove()`**, `document.querySelector("#gameCanvas")` без перевірки на `null`, `error.detail` в `catch` (там `unknown`) — три місця, де клієнт міг впасти в рідкісних умовах.
+7. **Readonly:** тест присвоював `hp` корабля напряму, обходячи `takeDamage`; тепер це `// @ts-expect-error` із поясненням.
+8. **`snap.v`:** тест перевіряв, що клієнт отримує `v` у повідомленні; схема (за замовчуванням) відкидає невідомі ключі, а версія перевіряється в «конверті» — тест перевіряв деталь реалізації.
+
+## Три цікаві типи
+
+**1. Брендовані ідентифікатори** (`shared/src/types.ts`): `EntityId` і `PlayerId` у JS — однакові числа, у TS — різні типи.
+
+```ts
+declare const brand: unique symbol;
+export type Brand<T, B extends string> = T & { readonly [brand]: B };
+export type EntityId = Brand<number, "EntityId">;
+export type PlayerId = Brand<number, "PlayerId">;
+```
+
+Передати `PlayerId` туди, де чекають `EntityId`, не вдасться; єдине місце, де число «стає» брендованим, — `brandNumber` (одне приведення), усі конструктори (`entityId(n)`, `playerId(n)`) ще й перевіряють діапазон u16. У рантаймі це просто число.
+
+**2. `EntityOf<K>` і типобезпечна таблиця зіткнень.** `AnyEntity` — дискримінований union за `kind`; `EntityOf<K>` = `Extract<AnyEntity, { kind: K }>`. Тоді таблиця правил зіткнень перевіряється компілятором:
+
+```ts
+function rule<A extends EntityKind, B extends EntityKind>(
+  kindA: A, kindB: B,
+  handler: (a: EntityOf<A>, b: EntityOf<B>, world: World) => void,
+): Rule
+
+rule("asteroid", "bullet", (asteroid, bullet, world) => { /* asteroid: Asteroid, bullet: Bullet */ })
+```
+
+Пара в довільному порядку розв'язується type-predicate-ом `isKind`, жодних `as`. Додати вид сутності без правила/малювання — помилка `assertNever` у `switch`.
+
+**3. Типи подій зі словника, виведеного з union-а** (`client/src/net/connection.ts`): `conn.on("snapshot", (msg) => …)` знає, що `msg` — снапшот, і не дозволить `conn.on("snapshott", …)`:
+
+```ts
+export type ServerEvents = { [M in ServerMessage as M["type"]]: M }; // key remapping
+export type ConnectionEvents = ServerEvents & { open: undefined; close: CloseInfo; reconnecting: {...}; … };
+```
+
+Нове повідомлення сервера в схемі автоматично з'являється як подія, а `dispatch` без нової `case` не скомпілюється (`assertNever`). Те саме для `Emitter<Events>` у `shared/src/emitter.ts` і `Lobby` (злиття інтерфейсу з класом додає типізовані `addEventListener("rooms", e => e.detail)` без жодного коду).
+
+## Приведення типів (`as`) — повний список
+
+У продакшн-коді **2**, обидва обґрунтовані:
+
+| Де | Чому не обійтись |
+| --- | --- |
+| `shared/src/types.ts` (`brandNumber`) | бренд існує лише в типах; перевірка діапазону — в конструкторах |
+| `shared/src/emitter.ts` (`handler as Handler<Events[K]>`) | `Map` зберігає обробники різних подій (гетерогенно); зовнішній API повністю типізований |
+
+У тестах: `res.json() as T` у HTTP-тестах (4 місця: відповідь нашого ж API, форма перевіряється іншими тестами) і підміна таймерів у `connection.test.ts` (2 місця, `as unknown as ReturnType<typeof setTimeout>`, бо підроблені таймери — індекси масиву). Решта «звуження» — через type predicates, `instanceof`, `in`, `satisfies` і вичерпні `switch`. `any` немає взагалі (`strict` + `noImplicitAny`; `unknown` на межах довіри).
+
+## Prove it
+
+`node --experimental-strip-types shared/scripts/ts-prove-it.mjs`:
+
+```text
+1. Node запускає код із помилкою типів: "12" (рядок '12' замість 3)
+2. enum у Node: SyntaxError [ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX]: TypeScript enum is not supported in strip-only mode
+3. tsc --erasableSyntaxOnly: …enum.ts(1,6): error TS1294: This syntax is not allowed when 'erasableSyntaxOnly' is enabled.
+4. as const замість enum у Node: 1
+```
+
+* Типи **стираються**: Node виконує `add("1", 2)` і повертає `"12"`. Тому `tsc` у CI і zod на межах — обидва потрібні: перший ловить помилки в нашому коді, другий — у даних ззовні.
+* `enum` не стирається (він породжує код), тому Node його відхиляє, а `erasableSyntaxOnly` помилку показує ще в редакторі. Заміна — `as const`-об'єкт + union (`KIND` у `sim/entity.ts`).
+* Детермінізм після міграції: хеш світу (seed 7, 1000 тиків) однаковий у Node і Chromium — `3408780942`.
+
+## Відповіді на рефлексійні питання (коротко)
+
+1. **Що TypeScript гарантує, а чого ні?** Узгодженість *всередині* програми за умови, що типи на межах правдиві. Він не перевіряє дані з мережі/файлів/env і стирається в рантаймі (див. Prove it) — тому на межах `unknown` + zod.
+2. **Чому `strict` і навіщо `noUncheckedIndexedAccess`?** Без `strictNullChecks` типи брешуть про `null`; без індексного прапорця `arr[i]` має тип елемента, хоч насправді може бути `undefined`. Прапорець дав найбільше реальних знахідок (пп. 5–6).
+3. **`any` проти `unknown`.** `any` вимикає перевірки й «заражає» все навколо; `unknown` змушує звузити значення перед використанням. Усі `catch` і межі довіри — `unknown`.
+4. **Union чи enum?** Дискримінований union + `as const`: нічого не породжує в рантаймі, працює зі stripping, дає вичерпність через `never`.
+5. **Чому схема, а не інтерфейс, для протоколу?** Інтерфейс — лише обіцянка; схема й перевіряє, і породжує тип, тож розбіжності між валідацією та типом немає (один код, два призначення).
+6. **Brand-типи: яка ціна?** Конструктор на кожне створення id (одне приведення, діапазон перевіряється) — зате неможливо переплутати `EntityId` і `PlayerId`.
+7. **Куди помістити перевірку — у типи чи в рантайм?** Усе, що залежить від даних ззовні, — у рантайм (zod); усе, що залежить від структури нашого коду, — у типи (безкоштовно).
+8. **Чи варто було переходити?** Так: цінність не в «меншій кількості багів у прод», а в тому, що рефакторинг (`encode`, емітери, `Snapshot`) тепер веде за руку компілятор, а тест із вигаданим типом `move` більше не можливий.
+9. **Фреймворки (M4)?** Не потрібні для цілей лаби; їхня міграція — окрема зміна з окремими ризиками (див. вище).
+
+> Примітка: пункти рефлексії сформульовано за темами лаби; якщо у завданні вони сформульовані інакше, звірте й за потреби відредагуйте.

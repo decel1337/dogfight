@@ -13,7 +13,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { generateLog } from "./gen-log.mjs";
+import { generateLog } from "./gen-log.ts";
 
 const MB = 1024 * 1024;
 const SIZE_MB = Number(process.argv[2] ?? 200);
@@ -36,7 +36,7 @@ async function getJson(port, pathname) {
 
 async function startServer(logDir) {
   const port = await freePort();
-  const child = spawn("node", ["src/index.js"], {
+  const child = spawn("node", ["src/index.ts"], {
     cwd: ROOT,
     env: {
       ...process.env,
@@ -129,10 +129,9 @@ function toSvg(runs) {
   const H = 360;
   const m = { l: 60, r: 20, t: 36, b: 44 };
   const maxT = Math.max(...runs.flatMap((r) => r.samples.map((s) => s.t)));
-  const maxY =
-    Math.ceil(
-      Math.max(...runs.flatMap((r) => r.samples.map((s) => s.mb))) / 50,
-    ) * 50;
+  const maxY = Math.ceil(
+    Math.max(...runs.flatMap((r) => r.samples.map((s) => s.mb))) / 50,
+  ) * 50;
   const x = (t) => m.l + (t / maxT) * (W - m.l - m.r);
   const y = (v) => H - m.b - (v / maxY) * (H - m.t - m.b);
   const colors = ["#1a7f37", "#cf222e"];
@@ -151,9 +150,7 @@ function toSvg(runs) {
     );
   }
   const lines = runs.map((run, i) => {
-    const pts = run.samples.map(
-      (s) => `${x(s.t).toFixed(1)},${y(s.mb).toFixed(1)}`,
-    );
+    const pts = run.samples.map((s) => `${x(s.t).toFixed(1)},${y(s.mb).toFixed(1)}`);
     return `<polyline fill="none" stroke="${colors[i]}" stroke-width="2.5" points="${pts.join(" ")}"/>`;
   });
   const legend = runs.map(
@@ -182,9 +179,7 @@ try {
 
   const runs = [];
   runs.push(await measure("pipeline (стрім)", "/api/replays", dir, id));
-  runs.push(
-    await measure("readFile (в пам'ять)", "/api/replays-naive", dir, id),
-  );
+  runs.push(await measure("readFile (в пам'ять)", "/api/replays-naive", dir, id));
 
   await mkdir(DOCS, { recursive: true });
   await writeFile(path.join(DOCS, "rss-backpressure.svg"), toSvg(runs));
@@ -194,10 +189,7 @@ try {
       csv.push(`${run.label},${s.t.toFixed(2)},${s.mb.toFixed(1)}`);
     }
   }
-  await writeFile(
-    path.join(DOCS, "rss-backpressure.csv"),
-    `${csv.join("\n")}\n`,
-  );
+  await writeFile(path.join(DOCS, "rss-backpressure.csv"), `${csv.join("\n")}\n`);
   console.log("графік: docs/rss-backpressure.svg");
 } finally {
   await rm(dir, { recursive: true, force: true });

@@ -5,7 +5,7 @@
       "client/src/**",
       "client/tests/**",
       "client/scripts/**",
-      "client/vite.config.js",
+      "client/vite.config.ts",
       "server/src/**",
       "server/test/**",
       "server/scripts/**",

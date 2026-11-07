@@ -1,7 +1,7 @@
 // Галерея збоїв + порівняння sequential/concurrent на справжньому HTTP-сервері.
 // Запуск: node scripts/failure-gallery.mjs
 import { createServer } from "node:http";
-import { fetchBytes, loadAll, requestJson } from "../src/assets/loader.js";
+import { fetchBytes, loadAll, requestJson } from "../src/assets/loader.ts";
 
 const log = [];
 const server = createServer((req, res) => {
@@ -44,9 +44,7 @@ log.length = 0;
 try {
   await requestJson(`${base}/missing`, { baseMs: 20 });
 } catch (e) {
-  console.log(
-    `1) 404          -> ${describe(e)}; запитів: ${log.length} (без повторів)`,
-  );
+  console.log(`1) 404          -> ${describe(e)}; запитів: ${log.length} (без повторів)`);
 }
 
 // 2. Таймаут
@@ -85,31 +83,19 @@ log.length = 0;
 try {
   await requestJson(`${base}/corrupt`);
 } catch (e) {
-  console.log(
-    `4) corrupt JSON -> ${describe(e)}; запитів: ${log.length} (без повторів)`,
-  );
+  console.log(`4) corrupt JSON -> ${describe(e)}; запитів: ${log.length} (без повторів)`);
 }
 
 // Порівняння
 console.log("\n=== Sequential vs Concurrent (5 ассетів) ===");
 const delays = "250,300,200,320,270";
 for (const sequential of [true, false]) {
-  const r = await loadAll(`${base}/manifest/${delays}`, {
-    loaders,
-    sequential,
-  });
+  const r = await loadAll(`${base}/manifest/${delays}`, { loaders, sequential });
   console.log(
     `${sequential ? "sequential (for..of + await)" : "concurrent (Promise.all)    "}: ${Math.round(r.ms)} мс`,
   );
 }
-console.log(
-  `сума затримок = ${delays
-    .split(",")
-    .map(Number)
-    .reduce(
-      (a, b) => a + b,
-    )} мс, максимум = ${Math.max(...delays.split(",").map(Number))} мс`,
-);
+console.log(`сума затримок = ${delays.split(",").map(Number).reduce((a, b) => a + b)} мс, максимум = ${Math.max(...delays.split(",").map(Number))} мс`);
 
 server.closeAllConnections();
 server.close();

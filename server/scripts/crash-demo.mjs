@@ -12,9 +12,7 @@ async function runWsDemo({ withListener }) {
   wss.on("connection", (socket) => {
     // ВИПРАВЛЕННЯ — ці три рядки. Без них подія "error" не має слухача.
     if (withListener) {
-      socket.on("error", (error) =>
-        console.log("socket error:", error.message),
-      );
+      socket.on("error", (error) => console.log("socket error:", error.message));
     }
     socket.on("message", () => {});
   });
@@ -43,23 +41,13 @@ else if (mode === "rejection-broken") {
   });
   Promise.reject(new Error("handler забув обробити помилку"));
 } else {
-  for (const m of [
-    "ws-broken",
-    "ws-fixed",
-    "rejection-broken",
-    "rejection-fixed",
-  ]) {
+  for (const m of ["ws-broken", "ws-fixed", "rejection-broken", "rejection-fixed"]) {
     const run = spawnSync(process.execPath, [import.meta.filename, m], {
       encoding: "utf8",
     });
     const text = `${run.stdout}${run.stderr}`
       .split("\n")
-      .filter(
-        (line) =>
-          line.trim() &&
-          !line.includes("node:internal") &&
-          !/^\s+at /.test(line),
-      )
+      .filter((line) => line.trim() && !line.includes("node:internal") && !/^\s+at /.test(line))
       .slice(0, 6)
       .join("\n");
     console.log(`\n=== ${m}  (код виходу ${run.status}) ===\n${text}`);
