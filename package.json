@@ -16,14 +16,24 @@
 		"dev:client": "npm run dev -w client",
 		"build": "npm run build -w client",
 		"start": "npm run start -w server",
-		"test": "npm test --workspaces",
-		"lint": "biome check .",
+		"test": "vitest run",
+		"lint": "eslint . && biome check .",
 		"format": "biome format --write .",
-		"typecheck": "npm run typecheck --workspaces --if-present"
+		"typecheck": "npm run typecheck --workspaces --if-present && tsc --noEmit -p e2e",
+		"test:watch": "vitest",
+		"test:coverage": "vitest run --coverage",
+		"test:e2e": "playwright test",
+		"lint:biome": "biome check ."
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.5.14",
 		"typescript": "~6.0.3",
-		"@types/node": "^22.0.0"
+		"@types/node": "^22.0.0",
+		"vitest": "^4.0.0",
+		"@vitest/coverage-v8": "^4.0.0",
+		"fast-check": "^4.0.0",
+		"@playwright/test": "^1.55.0",
+		"eslint": "^9.0.0",
+		"typescript-eslint": "^8.0.0"
 	}
 }

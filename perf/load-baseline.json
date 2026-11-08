@@ -1,0 +1,67 @@
+[
+  {
+    "n": 8,
+    "layout": "single",
+    "joined": 8,
+    "tickP99": 1.03,
+    "tickAvg": 0.289,
+    "tickMax": 2.425,
+    "jitterP99": 1.171,
+    "skipped": 0,
+    "elu": 0.022,
+    "rssMb": 111,
+    "kbPerSec": 368
+  },
+  {
+    "n": 32,
+    "layout": "single",
+    "joined": 32,
+    "tickP99": 2.516,
+    "tickAvg": 1.105,
+    "tickMax": 4.231,
+    "jitterP99": 1.232,
+    "skipped": 0,
+    "elu": 0.051,
+    "rssMb": 118,
+    "kbPerSec": 4059
+  },
+  {
+    "n": 64,
+    "layout": "single",
+    "joined": 64,
+    "tickP99": 5.096,
+    "tickAvg": 2.229,
+    "tickMax": 7.732,
+    "jitterP99": 1.189,
+    "skipped": 0,
+    "elu": 0.095,
+    "rssMb": 122,
+    "kbPerSec": 12634
+  },
+  {
+    "n": 128,
+    "layout": "single",
+    "joined": 128,
+    "tickP99": 11.02,
+    "tickAvg": 5.211,
+    "tickMax": 12.005,
+    "jitterP99": 1.219,
+    "skipped": 0,
+    "elu": 0.209,
+    "rssMb": 142,
+    "kbPerSec": 37618
+  },
+  {
+    "n": 192,
+    "layout": "single",
+    "joined": 192,
+    "tickP99": 18.106,
+    "tickAvg": 8.374,
+    "tickMax": 19.462,
+    "jitterP99": 1.66,
+    "skipped": 0,
+    "elu": 0.349,
+    "rssMb": 155,
+    "kbPerSec": 69732
+  }
+]

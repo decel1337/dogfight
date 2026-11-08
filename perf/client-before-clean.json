@@ -1,0 +1,151 @@
+{
+  "label": "before",
+  "secs": 30,
+  "bots": 8,
+  "entitiesInScene": 57,
+  "frames": 1840,
+  "frameMs": {
+    "n": 1840,
+    "p50": 16.7,
+    "p95": 16.7,
+    "p99": 16.8,
+    "max": 16.8
+  },
+  "gc": {
+    "minor": {
+      "count": 11,
+      "totalMs": 21.98,
+      "maxMs": 2.92
+    },
+    "major": {
+      "count": 6,
+      "totalMs": 26.52,
+      "maxMs": 8.56
+    }
+  },
+  "gcTimeline": [
+    {
+      "tSec": 0.4,
+      "kind": "minor",
+      "ms": 2.25,
+      "heapBeforeMb": 5.5,
+      "heapAfterMb": 3.8
+    },
+    {
+      "tSec": 1.4,
+      "kind": "minor",
+      "ms": 2.92,
+      "heapBeforeMb": 5.5,
+      "heapAfterMb": 4
+    },
+    {
+      "tSec": 2.1,
+      "kind": "minor",
+      "ms": 1.85,
+      "heapBeforeMb": 5.6,
+      "heapAfterMb": 4.3
+    },
+    {
+      "tSec": 2.7,
+      "kind": "minor",
+      "ms": 1.15,
+      "heapBeforeMb": 5.8,
+      "heapAfterMb": 4.5
+    },
+    {
+      "tSec": 4.2,
+      "kind": "minor",
+      "ms": 2.05,
+      "heapBeforeMb": 7.6,
+      "heapAfterMb": 4.9
+    },
+    {
+      "tSec": 6.1,
+      "kind": "minor",
+      "ms": 1,
+      "heapBeforeMb": 8,
+      "heapAfterMb": 5
+    },
+    {
+      "tSec": 7.9,
+      "kind": "minor",
+      "ms": 2.71,
+      "heapBeforeMb": 8,
+      "heapAfterMb": 5.1
+    },
+    {
+      "tSec": 9.6,
+      "kind": "minor",
+      "ms": 2.24,
+      "heapBeforeMb": 8,
+      "heapAfterMb": 5.2
+    },
+    {
+      "tSec": 11.3,
+      "kind": "minor",
+      "ms": 2.05,
+      "heapBeforeMb": 8.3,
+      "heapAfterMb": 5.4
+    },
+    {
+      "tSec": 13.4,
+      "kind": "minor",
+      "ms": 0.97,
+      "heapBeforeMb": 8.4,
+      "heapAfterMb": 5.5
+    },
+    {
+      "tSec": 15.1,
+      "kind": "major",
+      "ms": 8.56,
+      "heapBeforeMb": 8.1,
+      "heapAfterMb": 3.2
+    },
+    {
+      "tSec": 17.2,
+      "kind": "minor",
+      "ms": 2.8,
+      "heapBeforeMb": 6.5,
+      "heapAfterMb": 3.7
+    },
+    {
+      "tSec": 17.5,
+      "kind": "major",
+      "ms": 3.13,
+      "heapBeforeMb": 4.2,
+      "heapAfterMb": 3.3
+    },
+    {
+      "tSec": 20.3,
+      "kind": "major",
+      "ms": 3.8,
+      "heapBeforeMb": 7.3,
+      "heapAfterMb": 3.3
+    },
+    {
+      "tSec": 23.2,
+      "kind": "major",
+      "ms": 4.72,
+      "heapBeforeMb": 7,
+      "heapAfterMb": 3.2
+    },
+    {
+      "tSec": 26.2,
+      "kind": "major",
+      "ms": 2.89,
+      "heapBeforeMb": 6.8,
+      "heapAfterMb": 3.2
+    },
+    {
+      "tSec": 29.1,
+      "kind": "major",
+      "ms": 3.42,
+      "heapBeforeMb": 6.6,
+      "heapAfterMb": 3.3
+    }
+  ],
+  "measures": {},
+  "allocatedKbTotal": 0,
+  "topAlloc": [],
+  "topSelf": []
+}

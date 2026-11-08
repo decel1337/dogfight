@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
-import test from "node:test";
+import { test } from "vitest";
 import { CLOSE } from "@dogfight/shared/protocol";
 import { type AppContext, type TestClient, connect, createRoom, joined, sleep, withApp } from "./helpers.ts";
 

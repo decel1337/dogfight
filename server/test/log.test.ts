@@ -3,7 +3,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Readable, Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import test from "node:test";
+import { test } from "vitest";
 import { MatchLogs, NdjsonTransform } from "../src/log/matchlog.ts";
 import { replay } from "../src/log/replay.ts";
 import { silentLogger } from "../src/logger.ts";

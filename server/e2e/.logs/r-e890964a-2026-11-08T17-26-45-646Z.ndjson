@@ -1,0 +1,6 @@
+{"t":1794158805648,"type":"created","room":{"id":"r-e890964a","name":"e2e-leave-1794158805098","players":0,"maxPlayers":8,"arena":{"width":1200,"height":800}}}
+{"t":1794158805760,"type":"join","player":{"id":1,"name":"Carol"}}
+{"t":1794158806420,"type":"join","player":{"id":2,"name":"Dave"}}
+{"t":1794158806673,"type":"leave","player":{"id":2,"name":"Dave"}}
+{"t":1794158806915,"type":"leave","player":{"id":1,"name":"Carol"}}
+{"t":1794158806915,"type":"deleted"}

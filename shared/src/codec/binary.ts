@@ -146,6 +146,15 @@ export function encodeSnapshot(msg: SnapshotMessage): Uint8Array<ArrayBuffer> {
   return out;
 }
 
+// Снапшот для всіх гравців однаковий, окрім поля ack (байти 5..8). Тому
+// сервер кодує тіло ОДИН раз за тик, а для кожного клієнта лише копіює буфер
+// (memcpy) і дописує його ack — замість O(N·записів) викликів DataView.
+export function withAck(frame: Uint8Array<ArrayBuffer>, ack: number): Uint8Array<ArrayBuffer> {
+  const out = frame.slice();
+  new DataView(out.buffer).setUint32(5, ack >>> 0, true);
+  return out;
+}
+
 export function encodeEvents(msg: EventsMessage): Uint8Array<ArrayBuffer> {
   const m = Math.min(msg.events.length, 255);
   const out = new Uint8Array(EVENTS_HEADER + m * EVENT_SIZE);

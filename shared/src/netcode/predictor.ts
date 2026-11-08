@@ -240,6 +240,19 @@ export class Predictor {
     this.offset = { x: this.offset.x * k, y: this.offset.y * k };
   }
 
+  // Без алокацій: заповнює `out` (викликач тримає один об'єкт між кадрами).
+  renderStateInto(alpha: number, out: { x: number; y: number; angle: number; thrusting: boolean }): boolean {
+    if (!this.state || this.state.dead) return false;
+    const { width, height } = this.arena;
+    const from = this.prev ?? this.state;
+    const to = this.state;
+    out.x = wrapInto(lerpWrap(from.x, to.x, alpha, width) + this.offset.x, width);
+    out.y = wrapInto(lerpWrap(from.y, to.y, alpha, height) + this.offset.y, height);
+    out.angle = lerpAngle(from.angle, to.angle, alpha);
+    out.thrusting = to.thrusting;
+    return true;
+  }
+
   renderState(alpha: number): RenderState | null {
     if (!this.state || this.state.dead) return null;
     const { width, height } = this.arena;

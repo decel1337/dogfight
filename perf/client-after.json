@@ -1,0 +1,373 @@
+{
+  "label": "after",
+  "secs": 30,
+  "bots": 8,
+  "entitiesInScene": 72,
+  "frames": 1849,
+  "frameMs": {
+    "n": 1849,
+    "p50": 16.7,
+    "p95": 16.7,
+    "p99": 16.8,
+    "max": 33.4
+  },
+  "gc": {
+    "minor": {
+      "count": 26,
+      "totalMs": 31.63,
+      "maxMs": 2.37
+    },
+    "major": {
+      "count": 3,
+      "totalMs": 23.88,
+      "maxMs": 12.43
+    }
+  },
+  "gcTimeline": [
+    {
+      "tSec": 0.8,
+      "kind": "minor",
+      "ms": 0.97,
+      "heapBeforeMb": 5.1,
+      "heapAfterMb": 3.6
+    },
+    {
+      "tSec": 2.1,
+      "kind": "minor",
+      "ms": 0.9,
+      "heapBeforeMb": 5.1,
+      "heapAfterMb": 3.6
+    },
+    {
+      "tSec": 3.3,
+      "kind": "minor",
+      "ms": 1.29,
+      "heapBeforeMb": 5.2,
+      "heapAfterMb": 3.7
+    },
+    {
+      "tSec": 4.5,
+      "kind": "minor",
+      "ms": 1.5,
+      "heapBeforeMb": 5.2,
+      "heapAfterMb": 3.7
+    },
+    {
+      "tSec": 5.7,
+      "kind": "minor",
+      "ms": 0.91,
+      "heapBeforeMb": 5.2,
+      "heapAfterMb": 3.8
+    },
+    {
+      "tSec": 6.8,
+      "kind": "minor",
+      "ms": 1.81,
+      "heapBeforeMb": 5.3,
+      "heapAfterMb": 3.8
+    },
+    {
+      "tSec": 8.1,
+      "kind": "minor",
+      "ms": 1.65,
+      "heapBeforeMb": 5.3,
+      "heapAfterMb": 3.8
+    },
+    {
+      "tSec": 9.5,
+      "kind": "minor",
+      "ms": 2.12,
+      "heapBeforeMb": 5.3,
+      "heapAfterMb": 3.8
+    },
+    {
+      "tSec": 10.8,
+      "kind": "minor",
+      "ms": 0.88,
+      "heapBeforeMb": 5.3,
+      "heapAfterMb": 3.8
+    },
+    {
+      "tSec": 12.1,
+      "kind": "minor",
+      "ms": 2.37,
+      "heapBeforeMb": 5.3,
+      "heapAfterMb": 3.9
+    },
+    {
+      "tSec": 13.3,
+      "kind": "minor",
+      "ms": 1.33,
+      "heapBeforeMb": 5.4,
+      "heapAfterMb": 4
+    },
+    {
+      "tSec": 14.5,
+      "kind": "minor",
+      "ms": 0.86,
+      "heapBeforeMb": 5.4,
+      "heapAfterMb": 4
+    },
+    {
+      "tSec": 15.9,
+      "kind": "minor",
+      "ms": 0.82,
+      "heapBeforeMb": 5.5,
+      "heapAfterMb": 4
+    },
+    {
+      "tSec": 17.4,
+      "kind": "minor",
+      "ms": 0.85,
+      "heapBeforeMb": 5.5,
+      "heapAfterMb": 4
+    },
+    {
+      "tSec": 20.7,
+      "kind": "minor",
+      "ms": 1.44,
+      "heapBeforeMb": 7.1,
+      "heapAfterMb": 4.1
+    },
+    {
+      "tSec": 21.3,
+      "kind": "minor",
+      "ms": 0.99,
+      "heapBeforeMb": 4.7,
+      "heapAfterMb": 4.1
+    },
+    {
+      "tSec": 21.9,
+      "kind": "minor",
+      "ms": 1.5,
+      "heapBeforeMb": 4.8,
+      "heapAfterMb": 4.1
+    },
+    {
+      "tSec": 22.6,
+      "kind": "minor",
+      "ms": 1.04,
+      "heapBeforeMb": 4.8,
+      "heapAfterMb": 4.1
+    },
+    {
+      "tSec": 23.3,
+      "kind": "minor",
+      "ms": 0.71,
+      "heapBeforeMb": 4.8,
+      "heapAfterMb": 4.1
+    },
+    {
+      "tSec": 24.2,
+      "kind": "minor",
+      "ms": 0.95,
+      "heapBeforeMb": 4.8,
+      "heapAfterMb": 4.1
+    },
+    {
+      "tSec": 25,
+      "kind": "minor",
+      "ms": 0.83,
+      "heapBeforeMb": 4.8,
+      "heapAfterMb": 4.2
+    },
+    {
+      "tSec": 25.9,
+      "kind": "minor",
+      "ms": 1.86,
+      "heapBeforeMb": 4.9,
+      "heapAfterMb": 4.2
+    },
+    {
+      "tSec": 26.8,
+      "kind": "minor",
+      "ms": 0.81,
+      "heapBeforeMb": 4.9,
+      "heapAfterMb": 4.2
+    },
+    {
+      "tSec": 26.8,
+      "kind": "major",
+      "ms": 12.43,
+      "heapBeforeMb": 4.2,
+      "heapAfterMb": 3.1
+    },
+    {
+      "tSec": 27.4,
+      "kind": "major",
+      "ms": 5.6,
+      "heapBeforeMb": 3.6,
+      "heapAfterMb": 3.1
+    },
+    {
+      "tSec": 28.3,
+      "kind": "minor",
+      "ms": 1.48,
+      "heapBeforeMb": 3.9,
+      "heapAfterMb": 3.3
+    },
+    {
+      "tSec": 29,
+      "kind": "minor",
+      "ms": 1.21,
+      "heapBeforeMb": 3.9,
+      "heapAfterMb": 3.3
+    },
+    {
+      "tSec": 29.8,
+      "kind": "minor",
+      "ms": 0.57,
+      "heapBeforeMb": 3.9,
+      "heapAfterMb": 3.3
+    },
+    {
+      "tSec": 30.1,
+      "kind": "major",
+      "ms": 5.85,
+      "heapBeforeMb": 3.5,
+      "heapAfterMb": 3.1
+    }
+  ],
+  "measures": {
+    "snapshot": {
+      "n": 925,
+      "p50": 0.1,
+      "p95": 0.2,
+      "p99": 0.3,
+      "max": 1.8
+    },
+    "step": {
+      "n": 926,
+      "p50": 0.2,
+      "p95": 0.8,
+      "p99": 1.5,
+      "max": 4.5
+    },
+    "scene": {
+      "n": 1849,
+      "p50": 0.1,
+      "p95": 0.3,
+      "p99": 1.3,
+      "max": 2
+    },
+    "frame": {
+      "n": 1849,
+      "p50": 0.3,
+      "p95": 1.1,
+      "p99": 1.7,
+      "max": 4.4
+    },
+    "draw": {
+      "n": 1849,
+      "p50": 0.2,
+      "p95": 0.4,
+      "p99": 1.3,
+      "max": 4.4
+    }
+  },
+  "allocatedKbTotal": 32102,
+  "topAlloc": [
+    {
+      "fn": "sampleInto main.js:5125",
+      "kb": 4116,
+      "pct": 12.8
+    },
+    {
+      "fn": "decodeBinary main.js:4855",
+      "kb": 3819,
+      "pct": 11.9
+    },
+    {
+      "fn": "scene main.js:5715",
+      "kb": 3341,
+      "pct": 10.4
+    },
+    {
+      "fn": "getFloat32 :0",
+      "kb": 2186,
+      "pct": 6.8
+    },
+    {
+      "fn": "drawScene main.js:6307",
+      "kb": 1992,
+      "pct": 6.2
+    },
+    {
+      "fn": "lerpWrap main.js:5049",
+      "kb": 1966,
+      "pct": 6.1
+    },
+    {
+      "fn": "set :0",
+      "kb": 1942,
+      "pct": 6
+    },
+    {
+      "fn": "drawEffect main.js:6224",
+      "kb": 1911,
+      "pct": 6
+    },
+    {
+      "fn": "drawBullets main.js:6162",
+      "kb": 1890,
+      "pct": 5.9
+    },
+    {
+      "fn": "syncBullets main.js:5397",
+      "kb": 1395,
+      "pct": 4.3
+    }
+  ],
+  "topSelf": [
+    {
+      "fn": "(program) :0",
+      "ms": 6507,
+      "pct": 21.6
+    },
+    {
+      "fn": "send :0",
+      "ms": 82,
+      "pct": 0.3
+    },
+    {
+      "fn": "sampleInto main.js:5125",
+      "ms": 51,
+      "pct": 0.2
+    },
+    {
+      "fn": "save :0",
+      "ms": 51,
+      "pct": 0.2
+    },
+    {
+      "fn": "createBufferSource :0",
+      "ms": 50,
+      "pct": 0.2
+    },
+    {
+      "fn": "fillText :0",
+      "ms": 45,
+      "pct": 0.1
+    },
+    {
+      "fn": "(garbage collector) :0",
+      "ms": 42,
+      "pct": 0.1
+    },
+    {
+      "fn": "drawHud main.js:6285",
+      "ms": 30,
+      "pct": 0.1
+    },
+    {
+      "fn": "drawImage :0",
+      "ms": 29,
+      "pct": 0.1
+    },
+    {
+      "fn": "PerformanceObserver.observe.entryTypes :15",
+      "ms": 23,
+      "pct": 0.1
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { type Server, createServer } from "node:http";
-import test, { after, before } from "node:test";
+import { afterAll as after, beforeAll as before, test } from "vitest";
 import {
   BadPayloadError,
   HttpError,

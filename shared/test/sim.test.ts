@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
-import test from "node:test";
+import { test } from "vitest";
 import { DT, SHIP } from "../src/constants.ts";
 import { mulberry32 } from "../src/prng.ts";
 import {

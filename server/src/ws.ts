@@ -2,7 +2,7 @@ import type http from "node:http";
 import type { Duplex } from "node:stream";
 import { type RawData, type WebSocket, WebSocketServer } from "ws";
 import { TICK_RATE } from "@dogfight/shared/constants";
-import { type Codec, getCodec, parseClientBinary } from "@dogfight/shared/codec";
+import { type Codec, encodeSnapshot, getCodec, parseClientBinary, withAck } from "@dogfight/shared/codec";
 import {
   CLOSE,
   type ClientMessage,
@@ -15,6 +15,7 @@ import {
 import { assertNever } from "@dogfight/shared/types";
 import type { Config } from "./config.ts";
 import type { Logger } from "./logger.ts";
+import { BotPool } from "./bots.ts";
 import { Match, type MatchFrame } from "./match.ts";
 import { NetSim } from "./netsim.ts";
 import { TokenBucket } from "./ratelimit.ts";
@@ -73,6 +74,7 @@ export function attachWebSocket({
   const states = new WeakMap<WebSocket, ConnState>();
   const hubs = new WeakMap<Room, Set<WebSocket>>(); // лише ті, хто зайшов
   const matches = new Map<Room, Match>();
+  const botPools = new Map<Room, BotPool>();
 
   const stateOf = (ws: WebSocket): ConnState => {
     const state = states.get(ws);
@@ -162,16 +164,30 @@ export function attachWebSocket({
     const hub = hubs.get(room);
     if (!hub || hub.size === 0) return;
     const encoded: Partial<Record<Codec["name"], string | Uint8Array>> = {}; // events: по разу на кодек
+    let baseSnapshot: Uint8Array<ArrayBuffer> | undefined;
     for (const ws of hub) {
       const state = stateOf(ws);
       if (!isJoined(state)) continue;
-      const snapshot = {
-        type: "snapshot" as const,
-        tick: frame.tick,
-        ack: frame.acks.get(state.player.id) ?? 0,
-        entities: frame.snapshot.entities,
-      };
-      deliver(ws, state.codec.encode(snapshot), { critical: false, reliable: false });
+      const ack = frame.acks.get(state.player.id) ?? 0;
+      let data: string | Uint8Array;
+      if (state.codec.binary) {
+        // Бінарний снапшот кодуємо раз за тик; на клієнта — лише копія з його ack.
+        baseSnapshot ??= encodeSnapshot({
+          type: "snapshot",
+          tick: frame.tick,
+          ack: 0,
+          entities: frame.snapshot.entities,
+        });
+        data = withAck(baseSnapshot, ack);
+      } else {
+        data = state.codec.encode({
+          type: "snapshot",
+          tick: frame.tick,
+          ack,
+          entities: frame.snapshot.entities,
+        });
+      }
+      deliver(ws, data, { critical: false, reliable: false });
       if (frame.events.length > 0) {
         const data = (encoded[state.codec.name] ??= state.codec.encode({
           type: "events",
@@ -189,6 +205,7 @@ export function attachWebSocket({
     const match = new Match({ room });
     matches.set(room, match);
     match.on("frame", (frame) => broadcastFrame(room, frame));
+    botPools.set(room, new BotPool(match));
     const roster = (): void =>
       broadcast(room, { type: "roster", players: room.roster() }, { critical: true });
     room.on("join", roster);
@@ -198,6 +215,8 @@ export function attachWebSocket({
     );
     room.once("closed", () => {
       match.stop();
+      botPools.get(room)?.dispose();
+      botPools.delete(room);
       matches.delete(room);
       for (const ws of hubs.get(room) ?? []) closeWith(ws, CLOSE.GOING_AWAY, "room closed");
       hubs.delete(room);
@@ -435,6 +454,14 @@ export function attachWebSocket({
     wss,
     clients,
     stats: () => ({ clients: clients.size }),
+    // Боти кімнати: count — скільки додати (0 = прибрати всіх). Повертає кількість ботів.
+    setBots(room: Room, op: "add" | "clear", count = 0): number | null {
+      const pool = botPools.get(room);
+      if (!pool) return null;
+      if (op === "add") pool.add(count);
+      else pool.clear();
+      return pool.size;
+    },
     matchStats: () => [...matches.values()].map((m) => m.stats()),
     // Для graceful shutdown: закриваємо ввічливо, а добивати — за таймером.
     closeAll(code: number = CLOSE.GOING_AWAY, reason = "server shutting down"): void {

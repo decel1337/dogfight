@@ -1,0 +1,15 @@
+[
+  {
+    "n": 128,
+    "layout": "single",
+    "joined": 128,
+    "tickP99": 9.573,
+    "tickAvg": 5.739,
+    "tickMax": 12.296,
+    "jitterP99": 1.322,
+    "skipped": 0,
+    "elu": 0.709,
+    "rssMb": 160,
+    "kbPerSec": 37891
+  }
+]

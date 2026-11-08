@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
-import test from "node:test";
+import { test } from "vitest";
 import { validateRoomInput } from "../src/app.ts";
 import { loadConfig } from "../src/config.ts";
 import { type RoomJson, createRoom, withApp } from "./helpers.ts";

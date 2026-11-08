@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { rmSync } from "node:fs";
 import path from "node:path";
-import test from "node:test";
+import { test } from "vitest";
 import { tempDir } from "./helpers.ts";
 
 const ENTRY = path.resolve(import.meta.dirname, "../src/index.ts");

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { runningHash } from "./match-helpers.ts";
 import type { InputMessage } from "@dogfight/shared/protocol";
 import { Match, type MatchFrame } from "../src/match.ts";

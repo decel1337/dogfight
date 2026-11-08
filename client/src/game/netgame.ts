@@ -3,6 +3,7 @@ import { DT, TICK_MS } from "@dogfight/shared/constants";
 import {
   type PredictedBullet,
   Predictor,
+  SampleScratch,
   ServerClock,
   type SampleMode,
   SnapshotBuffer,
@@ -43,8 +44,10 @@ export type Effect =
 // Наш корабель у сцені: запис сервера, можливо перекритий передбаченням.
 export interface MeRecord extends EntityRecord {
   readonly predicted: boolean;
-  readonly thrusting?: boolean;
+  readonly thrusting?: boolean | undefined;
 }
+
+type Mutable<T> = { -readonly [K in keyof T]: T[K] };
 
 export interface Scene {
   arena: Arena;
@@ -99,6 +102,20 @@ export const brokenIntegrate: Integrate = (state, input, dt, arena) => {
   return { ...next, x: next.x + (Math.random() - 0.5) * 0.8 };
 };
 
+function copyRecord(to: Mutable<EntityRecord>, from: EntityRecord): void {
+  to.id = from.id;
+  to.kind = from.kind;
+  to.flags = from.flags;
+  to.x = from.x;
+  to.y = from.y;
+  to.vx = from.vx;
+  to.vy = from.vy;
+  to.angle = from.angle;
+  to.a = from.a;
+  to.b = from.b;
+  to.c = from.c;
+}
+
 const push = (list: number[], value: number): void => {
   list.push(value);
   if (list.length > HISTORY) list.shift();
@@ -121,6 +138,20 @@ export class NetGame {
   readonly predictor: Predictor;
   readonly buffer = new SnapshotBuffer();
   readonly clock = new ServerClock();
+
+  // --- повторно використовувані об'єкти рендеру (M3: нуль алокацій на кадр) ---
+  // Scene, що повертає scene(), — один і той самий об'єкт: вона дійсна до
+  // НАСТУПНОГО виклику scene(). Хто хоче зберегти — копіює.
+  readonly #scratch = new SampleScratch();
+  readonly #view = { x: 0, y: 0, angle: 0, thrusting: false };
+  readonly #me: Mutable<MeRecord> = {
+    id: 0 as EntityId, kind: 1, flags: 0, x: 0, y: 0, vx: 0, vy: 0, angle: 0, a: 0, b: 0, c: 0,
+    predicted: false, thrusting: undefined,
+  };
+  readonly #entities: EntityRecord[] = [];
+  readonly #bulletPool: { x: number; y: number; angle: number }[] = [];
+  readonly #localBullets: { x: number; y: number; angle: number }[] = [];
+  readonly #scene: Scene;
 
   ownRecord: EntityRecord | null = null; // останній запис нашого корабля від сервера
   claimed = new Set<EntityId>(); // серверні кулі, замінені локальними копіями
@@ -160,6 +191,13 @@ export class NetGame {
       arena: this.arena,
       integrate: this.options.broken ? brokenIntegrate : sharedIntegrate,
     });
+    this.#scene = {
+      arena: this.arena,
+      entities: this.#entities,
+      me: null,
+      localBullets: this.#localBullets,
+      effects: this.effects,
+    };
   }
 
   get ready(): boolean {
@@ -248,10 +286,11 @@ export class NetGame {
   // інакше вибух з'являвся б раніше за кулю, що його спричинила (інші
   // сутності малюються в минулому).
   #releaseEvents(): void {
-    const rest: (GameEvent & { tick: number })[] = [];
-    for (const e of this.pendingEvents) {
+    const events = this.pendingEvents;
+    let kept = 0;
+    for (const e of events) {
       if (e.tick > this.renderTick) {
-        rest.push(e);
+        events[kept++] = e; // ще рано: лишаємо в черзі (компактуємо на місці)
         continue;
       }
       // Свій постріл при передбаченні вже зіграно локально.
@@ -260,7 +299,7 @@ export class NetGame {
       if (e.kind === 3) this.#explode(e.x, e.y);
       else if (e.kind === 2) this.effects.push({ type: "spark", x: e.x, y: e.y, age: 0 });
     }
-    this.pendingEvents = rest;
+    events.length = kept;
   }
 
   #explode(x: number, y: number): void {
@@ -280,46 +319,83 @@ export class NetGame {
       ? this.clock.serverTickAt(now) - this.options.interpolationDelayTicks
       : 0;
 
-    const sample = this.buffer.sample(this.renderTick, this.arena);
-    this.mode = sample.mode;
+    this.mode = this.buffer.sampleInto(this.#scratch, this.renderTick, this.arena);
+    const sampled = this.#scratch.entities;
     this.#releaseEvents();
-    for (const effect of this.effects) effect.age += frameSeconds;
-    this.effects = this.effects.filter((e) => e.age < EXPLOSION_SECONDS);
+
+    // Ефекти: старіють і компактуються на місці (без filter/нового масиву).
+    const effects = this.effects;
+    let kept = 0;
+    for (const effect of effects) {
+      effect.age += frameSeconds;
+      if (effect.age < EXPLOSION_SECONDS) effects[kept++] = effect;
+    }
+    effects.length = kept;
 
     const predicting = this.options.predict && this.predictor.ready;
-    const entities: EntityRecord[] = [];
-    for (const e of sample.entities) {
-      if (predicting && e.id === this.shipId) continue; // себе малюємо з передбачення
-      if (predicting && this.claimed.has(e.id)) continue; // кулю показує її локальна копія
+    const own = this.ownRecord;
+    const me = this.#me;
+    let hasMe = false;
+    if (predicting) {
+      if (own && this.predictor.renderStateInto(alpha, this.#view)) {
+        copyRecord(me, own);
+        me.x = this.#view.x;
+        me.y = this.#view.y;
+        me.angle = this.#view.angle;
+        me.thrusting = this.#view.thrusting;
+        me.id = this.shipId;
+        me.predicted = true;
+        hasMe = true;
+      } else if (own) {
+        copyRecord(me, own); // мертвий
+        me.thrusting = undefined;
+        me.predicted = true;
+        hasMe = true;
+      }
+    } else if (own) {
+      let interpolated: EntityRecord | undefined;
+      for (const e of sampled) {
+        if (e.id === this.shipId) {
+          interpolated = e;
+          break;
+        }
+      }
+      copyRecord(me, interpolated ?? own);
+      me.a = own.a;
+      me.c = own.c;
+      me.thrusting = undefined;
+      me.predicted = false;
+      hasMe = true;
+    }
+
+    // Чужі сутності: без себе (малюємо окремо) і без куль, замінених локальними копіями.
+    const entities = this.#entities;
+    entities.length = 0;
+    for (const e of sampled) {
+      if (hasMe && e.id === me.id) continue;
+      if (predicting && (e.id === this.shipId || this.claimed.has(e.id))) continue;
       entities.push(e);
     }
 
-    let me: MeRecord | null = null;
-    const own = this.ownRecord;
+    // Локальні кулі: пул об'єктів {x,y,angle}, довжина масиву підганяється.
+    const local = this.#localBullets;
+    local.length = 0;
     if (predicting) {
-      const view = this.predictor.renderState(alpha);
-      if (view && own) me = { ...own, ...view, id: this.shipId, predicted: true };
-      else if (own) me = { ...own, predicted: true }; // мертвий
-    } else if (own) {
-      const interpolated = sample.entities.find((e) => e.id === this.shipId);
-      me = { ...(interpolated ?? own), a: own.a, c: own.c, predicted: false };
+      const pool = this.#bulletPool;
+      let n = 0;
+      for (const b of this.predictor.bullets) {
+        const out = (pool[n] ??= { x: 0, y: 0, angle: 0 });
+        out.x = b.x + b.vx * DT * alpha;
+        out.y = b.y + b.vy * DT * alpha;
+        out.angle = b.angle;
+        local.push(out);
+        n++;
+      }
     }
 
-    const bullets = predicting
-      ? this.predictor.bullets.map((b) => ({
-          x: b.x + b.vx * DT * alpha,
-          y: b.y + b.vy * DT * alpha,
-          angle: b.angle,
-        }))
-      : [];
-
-    return {
-      arena: this.arena,
-      entities: me ? entities.filter((e) => e.id !== me?.id) : entities,
-      me,
-      localBullets: bullets,
-      effects: this.effects,
-    };
+    const scene = this.#scene;
+    scene.me = hasMe ? me : null;
+    return scene;
   }
 
   // ---------- для netgraph ----------

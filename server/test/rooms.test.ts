@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { sleep } from "./helpers.ts";
 import { Room, RoomFullError, RoomManager, type RoomRecord, TooManyRoomsError } from "../src/rooms.ts";
 

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { encodeInput, encodePing } from "@dogfight/shared/codec";
 import type { CodecName } from "@dogfight/shared/protocol";
 import { type AppContext, connect, createRoom, sleep, withApp } from "./helpers.ts";

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { decodeBinary } from "@dogfight/shared/codec";
 import { TICK_MS } from "@dogfight/shared/constants";
 import type { SnapshotMessage } from "@dogfight/shared/protocol";

@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { DT, TICK_MS } from "../src/constants.ts";
 import {
   Predictor,
   ServerClock,
+  SampleScratch,
   SnapshotBuffer,
   lerpWrap,
   shortestDelta,
@@ -266,4 +267,45 @@ test("геометрія тору", () => {
   assert.equal(shortestDelta(1190, 1200), -10);
   assert.equal(shortestDelta(-1190, 1200), 10);
   assert.ok(Math.abs(lerpWrap(1190, 10, 0.5, 1200) - 0) < 1e-9);
+});
+
+test("sampleInto == sample у всіх режимах, а записи пулу переживають кадри (без алокацій)", () => {
+  const buf = new SnapshotBuffer();
+  const scratch = new SampleScratch();
+  const frame = (x: number, withExtra: boolean): EntityRecord[] => [
+    rec({ id: entityId(1), x, y: 10, angle: 0.2 }),
+    ...(withExtra ? [rec({ id: entityId(2), x: x + 5, y: 20 })] : []),
+  ];
+  buf.push({ tick: 10, ack: 0, entities: frame(100, true) });
+  buf.push({ tick: 12, ack: 0, entities: frame(200, false) }); // сутність 2 зникає
+  let firstRecord: EntityRecord | undefined;
+  for (const tick of [5, 10, 10.5, 11, 11.9, 12, 14, 100]) {
+    const expected = buf.sample(tick, ARENA);
+    const mode = buf.sampleInto(scratch, tick, ARENA);
+    assert.equal(mode, expected.mode, `mode @${tick}`);
+    assert.deepEqual(scratch.entities, expected.entities, `entities @${tick}`);
+    firstRecord ??= scratch.entities[0];
+    if (scratch.entities[0]) assert.equal(scratch.entities[0], firstRecord, "той самий об'єкт із пулу");
+  }
+});
+
+test("renderStateInto == renderState", () => {
+  const p = new Predictor({ arena: ARENA });
+  p.reconcile(rec({ x: 300, y: 300 }), 0);
+  p.step({ thrust: 1, turn: 1, fire: 0 });
+  const out = { x: 0, y: 0, angle: 0, thrusting: false };
+  assert.equal(p.renderStateInto(0.5, out), true);
+  assert.deepEqual(out, p.renderState(0.5));
+});
+
+test("ServerClock (кільце): вікно відсікає старі зразки, переповнення не ламає оцінку", () => {
+  const clock = new ServerClock({ windowMs: 1000, gain: 1 });
+  for (let t = 0; t < 100; t++) clock.observe(t, t * TICK_MS + 50); // «тремтіння» постійне: offset = 50
+  assert.ok(Math.abs((clock.offset ?? NaN) - 50) < 1e-9);
+  assert.ok(clock.sampleCount <= 1000 / TICK_MS + 2, "зразки старші за вікно викинуто");
+
+  const big = new ServerClock({ windowMs: 1e9, gain: 1 });
+  for (let t = 0; t < 2000; t++) big.observe(t, t * TICK_MS + 20 + (t % 7));
+  assert.equal(big.sampleCount, 512, "кільце не росте понад ємність");
+  assert.ok(Math.abs((big.offset ?? NaN) - 20) < 1e-9, "мінімум за вікно знайдено");
 });

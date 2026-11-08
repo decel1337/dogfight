@@ -20,6 +20,42 @@ export interface Sample {
   readonly mode: SampleMode;
 }
 
+type Mutable<T> = { -readonly [K in keyof T]: T[K] };
+
+// Пул для sampleInto: записи й масив живуть між кадрами, тож 60 кадрів/с не
+// створюють ні масивів, ні об'єктів-записів (див. README, «Lab 07 / M3»).
+// УВАГА: після наступного sampleInto попередній результат перезаписується.
+export class SampleScratch {
+  readonly pool: Mutable<EntityRecord>[] = [];
+  readonly entities: EntityRecord[] = [];
+  mode: SampleMode = "empty";
+
+  // Наступний вільний запис пулу, заповнений копією `src` (поля x/y/angle
+  // викликач перезапише при інтерполяції).
+  take(src: EntityRecord): Mutable<EntityRecord> {
+    const n = this.entities.length;
+    let rec = this.pool[n];
+    if (!rec) {
+      rec = { ...src };
+      this.pool[n] = rec;
+    } else {
+      rec.id = src.id;
+      rec.kind = src.kind;
+      rec.flags = src.flags;
+      rec.x = src.x;
+      rec.y = src.y;
+      rec.vx = src.vx;
+      rec.vy = src.vy;
+      rec.angle = src.angle;
+      rec.a = src.a;
+      rec.b = src.b;
+      rec.c = src.c;
+    }
+    this.entities.push(rec);
+    return rec;
+  }
+}
+
 export interface SnapshotInput {
   readonly tick: number;
   readonly ack: number;
@@ -32,7 +68,11 @@ export class SnapshotBuffer {
   readonly maxSnapshots: number;
   readonly snaps: BufferedSnapshot[] = []; // за зростанням tick
 
-  constructor({ maxSnapshots = 64 }: { maxSnapshots?: number } = {}) {
+  // 12 снапшотів ≈ 0,4 с: з запасом на затримку інтерполяції (2 тики) і
+  // перевпорядкування. Було 64 (≈2 с): записи жили довше за інтервал між
+  // scavenge, переживали два мінорні GC, потрапляли в old space й змушували
+  // V8 робити major GC (див. README, Lab 07 / M3).
+  constructor({ maxSnapshots = 12 }: { maxSnapshots?: number } = {}) {
     this.maxSnapshots = maxSnapshots;
   }
 
@@ -62,56 +102,64 @@ export class SnapshotBuffer {
   }
 
   // Повертає { entities, mode }. mode: empty | early | interpolating |
-  // extrapolating — для netgraph.
+  // extrapolating — для netgraph. Кожен виклик створює нові записи (зручно в
+  // тестах); гарячий шлях рендеру використовує sampleInto.
   sample(
     renderTick: number,
     arena: Arena,
     { maxExtrapolateTicks = 4 }: { maxExtrapolateTicks?: number } = {},
   ): Sample {
+    const scratch = new SampleScratch();
+    this.sampleInto(scratch, renderTick, arena, maxExtrapolateTicks);
+    return { entities: scratch.entities, mode: scratch.mode };
+  }
+
+  // Те саме, але без алокацій у сталому режимі: записи беруться з пулу `scratch`.
+  sampleInto(scratch: SampleScratch, renderTick: number, arena: Arena, maxExtrapolateTicks = 4): SampleMode {
     const { snaps } = this;
+    const out = scratch.entities;
+    out.length = 0;
     const first = snaps[0];
-    if (!first) return { entities: [], mode: "empty" };
+    if (!first) return (scratch.mode = "empty");
 
     if (renderTick <= first.tick) {
-      return { entities: first.entities.map((e) => ({ ...e })), mode: "early" };
+      for (const e of first.entities) scratch.take(e);
+      return (scratch.mode = "early");
     }
 
     let i = snaps.length - 1;
     while (i > 0 && (snaps[i]?.tick ?? 0) > renderTick) i--;
     const from = snaps[i];
     const to = snaps[i + 1];
-    if (!from) return { entities: [], mode: "empty" };
+    if (!from) return (scratch.mode = "empty");
 
     if (!to) {
       // Нових снапшотів немає: коротко екстраполюємо за швидкістю.
       const ticks = Math.min(renderTick - from.tick, maxExtrapolateTicks);
-      const entities = from.entities.map((e) => ({
-        ...e,
-        x: wrapInto(e.x + e.vx * DT * ticks, arena.width),
-        y: wrapInto(e.y + e.vy * DT * ticks, arena.height),
-      }));
-      return { entities, mode: "extrapolating" };
+      for (const e of from.entities) {
+        const rec = scratch.take(e);
+        rec.x = wrapInto(e.x + e.vx * DT * ticks, arena.width);
+        rec.y = wrapInto(e.y + e.vy * DT * ticks, arena.height);
+      }
+      return (scratch.mode = "extrapolating");
     }
 
     const t = (renderTick - from.tick) / (to.tick - from.tick);
-    const entities: EntityRecord[] = [];
     for (const a of from.entities) {
       const b = to.byId.get(a.id);
       if (!b) {
         // Зникне в `to`: до того моменту малюємо останній відомий стан.
-        entities.push({ ...a });
+        scratch.take(a);
         continue;
       }
-      entities.push({
-        ...b,
-        x: lerpWrap(a.x, b.x, t, arena.width),
-        y: lerpWrap(a.y, b.y, t, arena.height),
-        angle: lerpAngle(a.angle, b.angle, t),
-      });
+      const rec = scratch.take(b);
+      rec.x = lerpWrap(a.x, b.x, t, arena.width);
+      rec.y = lerpWrap(a.y, b.y, t, arena.height);
+      rec.angle = lerpAngle(a.angle, b.angle, t);
     }
     // Сутності, що з'явились у `to`, ще не малюємо: вони постануть, коли
     // renderTick дійде до `to`.
-    return { entities, mode: "interpolating" };
+    return (scratch.mode = "interpolating");
   }
 }
 
@@ -121,8 +169,14 @@ export class SnapshotBuffer {
 export class ServerClock {
   readonly windowMs: number;
   readonly gain: number;
-  readonly samples: { at: number; value: number }[] = [];
   offset: number | null = null;
+
+  // Кільце з двох Float64Array замість масиву об'єктів {at, value}: раніше 150
+  // живих об'єктів на 5-секундне вікно щосекунди переходили в old space.
+  readonly #at = new Float64Array(512);
+  readonly #value = new Float64Array(512);
+  #head = 0; // індекс найстарішого
+  #count = 0;
 
   constructor({ windowMs = 5000, gain = 0.1 }: { windowMs?: number; gain?: number } = {}) {
     this.windowMs = windowMs;
@@ -133,14 +187,28 @@ export class ServerClock {
     return this.offset !== null;
   }
 
+  get sampleCount(): number {
+    return this.#count;
+  }
+
   observe(tick: number, recvMs: number): void {
-    const value = recvMs - tick * TICK_MS;
-    this.samples.push({ at: recvMs, value });
-    for (let first = this.samples[0]; first && recvMs - first.at > this.windowMs; first = this.samples[0]) {
-      this.samples.shift();
+    const cap = this.#at.length;
+    if (this.#count === cap) {
+      this.#head = (this.#head + 1) % cap; // переповнення: відкидаємо найстаріший
+      this.#count--;
+    }
+    const slot = (this.#head + this.#count) % cap;
+    this.#at[slot] = recvMs;
+    this.#value[slot] = recvMs - tick * TICK_MS;
+    this.#count++;
+    while (this.#count > 0 && recvMs - (this.#at[this.#head] ?? 0) > this.windowMs) {
+      this.#head = (this.#head + 1) % cap;
+      this.#count--;
     }
     let target = Number.POSITIVE_INFINITY;
-    for (const s of this.samples) target = Math.min(target, s.value);
+    for (let i = 0; i < this.#count; i++) {
+      target = Math.min(target, this.#value[(this.#head + i) % cap] ?? Number.POSITIVE_INFINITY);
+    }
     // Повільно підтягуємо оцінку до мінімуму, щоб час не стрибав.
     this.offset =
       this.offset === null ? target : this.offset + (target - this.offset) * this.gain;

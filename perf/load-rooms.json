@@ -1,0 +1,41 @@
+[
+  {
+    "n": 128,
+    "layout": "rooms",
+    "joined": 128,
+    "tickP99": 1.114,
+    "tickAvg": 0.226,
+    "tickMax": 5.095,
+    "jitterP99": 2.889,
+    "skipped": 0,
+    "elu": 0.173,
+    "rssMb": 138,
+    "kbPerSec": 6265
+  },
+  {
+    "n": 256,
+    "layout": "rooms",
+    "joined": 256,
+    "tickP99": 0.87,
+    "tickAvg": 0.208,
+    "tickMax": 2.443,
+    "jitterP99": 3.208,
+    "skipped": 0,
+    "elu": 0.308,
+    "rssMb": 142,
+    "kbPerSec": 12426
+  },
+  {
+    "n": 384,
+    "layout": "rooms",
+    "joined": 384,
+    "tickP99": 0.798,
+    "tickAvg": 0.196,
+    "tickMax": 4.382,
+    "jitterP99": 5.329,
+    "skipped": 0,
+    "elu": 0.42,
+    "rssMb": 146,
+    "kbPerSec": 18686
+  }
+]

@@ -1,0 +1,7 @@
+{"t":1794158802890,"type":"created","room":{"id":"r-09ca20f6","name":"e2e-1794158801450","players":0,"maxPlayers":8,"arena":{"width":1200,"height":800}}}
+{"t":1794158803023,"type":"join","player":{"id":1,"name":"Alice"}}
+{"t":1794158803766,"type":"join","player":{"id":2,"name":"Bob"}}
+{"t":1794158804324,"type":"chat","from":1,"text":"привіт з e2e"}
+{"t":1794158804768,"type":"leave","player":{"id":1,"name":"Alice"}}
+{"t":1794158805066,"type":"leave","player":{"id":2,"name":"Bob"}}
+{"t":1794158805066,"type":"deleted"}

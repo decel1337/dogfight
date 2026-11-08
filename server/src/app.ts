@@ -6,6 +6,7 @@ import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import { setTimeout as delay } from "node:timers/promises";
 import type { Config } from "./config.ts";
+import { MAX_BOTS } from "./bots.ts";
 import { MatchLogs } from "./log/matchlog.ts";
 import { type Logger, silentLogger } from "./logger.ts";
 import { RoomManager, TooManyRoomsError } from "./rooms.ts";
@@ -106,6 +107,14 @@ export interface RoomInput {
 
 // Перевіряємо кожне поле й копіюємо лише відомі: зайве з тіла не потрапляє
 // далі в систему.
+// POST /api/rooms/:id/bots { count } — скільки ботів додати (1..MAX_BOTS).
+export function validateBotCount(body: unknown): number {
+  if (!isRecord(body) || !isInt(body.count, 1, MAX_BOTS)) {
+    throw new HttpError(400, `count: ціле 1..${MAX_BOTS}`);
+  }
+  return body.count;
+}
+
 export function validateRoomInput(
   body: unknown,
   config: Pick<Config, "maxPlayersPerRoom">,
@@ -213,7 +222,17 @@ export function createApp({
     // Діагностика такту: тривалість тика й «тремтіння» таймера (мс).
     if (pathname === "/api/stats") {
       allow(req, ["GET", "HEAD"]);
-      return sendJson(res, 200, { tickRate: 30, matches: ws.matchStats() });
+      const mem = process.memoryUsage();
+      return sendJson(res, 200, {
+        tickRate: 30,
+        matches: ws.matchStats(),
+        // Кумулятивний ELU: навантажувальний тест бере різницю двох замірів.
+        process: {
+          elu: performance.eventLoopUtilization(),
+          rssMb: Math.round(mem.rss / 1048576),
+          heapUsedMb: Math.round(mem.heapUsed / 1048576),
+        },
+      });
     }
 
     if (pathname === "/api/rooms") {
@@ -228,6 +247,16 @@ export function createApp({
         if (error instanceof TooManyRoomsError) throw new HttpError(429, error.message);
         throw error;
       }
+    }
+
+    const botsRoute = /^\/api\/rooms\/([^/]+)\/bots$/.exec(pathname);
+    if (botsRoute) {
+      allow(req, ["POST", "DELETE"]);
+      const room = rooms.get(botsRoute[1] ?? "");
+      if (!room) throw new HttpError(404, "кімнату не знайдено");
+      if (req.method === "DELETE") return sendJson(res, 200, { bots: ws.setBots(room, "clear") });
+      const count = validateBotCount(await readJson(req, config.maxBodyBytes));
+      return sendJson(res, 200, { bots: ws.setBots(room, "add", count) });
     }
 
     if (pathname === "/api/replays") {

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { hashWorld } from "../src/sim/index.ts";
 import { runScenario } from "./helpers.ts";
 

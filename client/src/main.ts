@@ -7,6 +7,7 @@ import { createLobbyView } from "./lobby/lobbyView.ts";
 import { NetGame, type OutgoingGame } from "./game/netgame.ts";
 import type { JoinDetail } from "./lobby/lobby.ts";
 import { createLoop } from "./loop.ts";
+import { perfBegin, perfEnd } from "./perf.ts";
 import { createConnection } from "./net/connection.ts";
 import type { CodecName } from "@dogfight/shared/protocol";
 import { encode } from "./net/protocol.ts";
@@ -141,7 +142,11 @@ function startGame({ room, playerName }: JoinDetail, assets: Assets): void {
     });
     if (net.latency || net.jitter || net.drop) conn.send({ type: "net", ...net });
   });
-  conn.on("snapshot", (msg) => game?.onSnapshot(msg));
+  conn.on("snapshot", (msg) => {
+    const t0 = perfBegin();
+    game?.onSnapshot(msg);
+    perfEnd("snapshot", t0);
+  });
   conn.on("events", (msg) => game?.onEvents(msg));
   conn.on("pong", (msg) => game?.onPong(msg));
   conn.on("roster", (msg) => chat.setRoster(msg.players));
@@ -201,10 +206,13 @@ function startGame({ room, playerName }: JoinDetail, assets: Assets): void {
   const loop = createLoop({
     step: DT,
     simulate: () => {
+      const t0 = perfBegin();
       if (game?.ready) game.step(readControls());
       input.endStep();
+      perfEnd("step", t0);
     },
     render: (alpha, metrics) => {
+      const frameStart = perfBegin();
       const now = performance.now();
       const frameSeconds = (now - lastFrame) / 1000;
       lastFrame = now;
@@ -215,14 +223,20 @@ function startGame({ room, playerName }: JoinDetail, assets: Assets): void {
         ]);
         return;
       }
-      drawScene(ctx, size, game.scene(alpha, frameSeconds), {
+      const t1 = perfBegin();
+      const scene = game.scene(alpha, frameSeconds);
+      perfEnd("scene", t1);
+      const t2 = perfBegin();
+      drawScene(ctx, size, scene, {
         metrics,
         images: assets.images,
       });
+      perfEnd("draw", t2);
       if (showGraph) {
         updateRate();
         drawNetgraph(ctx, size, game.netStats(), rate);
       }
+      perfEnd("frame", frameStart);
     },
   });
   loop.start();

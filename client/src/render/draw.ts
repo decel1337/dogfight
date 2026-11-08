@@ -67,6 +67,32 @@ function drawShip(
   }
 }
 
+// Кулі малюємо ПАКЕТОМ: один path на колір і один fill замість
+// save/translate/arc/fill/restore на кожну кулю. Менше викликів canvas =
+// менший буфер записаних команд (він рахується як зовнішня пам'ять і
+// підганяв V8 до major GC — див. README, Lab 07 / M3).
+const BULLET_COLORS = ["#ff3860", "#ffd33d"] as const; // звичайна, самонавідна
+const TAU = Math.PI * 2;
+
+function drawBullets(ctx: CanvasRenderingContext2D, scene: Scene): void {
+  for (let color = 0; color < 2; color++) {
+    ctx.beginPath();
+    for (const e of scene.entities) {
+      if (e.kind !== 2 || ((e.flags & HOMING) !== 0) !== (color === 1)) continue;
+      ctx.moveTo(e.x + 3, e.y);
+      ctx.arc(e.x, e.y, 3, 0, TAU);
+    }
+    if (color === 0) {
+      for (const b of scene.localBullets) {
+        ctx.moveTo(b.x + 3, b.y);
+        ctx.arc(b.x, b.y, 3, 0, TAU);
+      }
+    }
+    ctx.fillStyle = BULLET_COLORS[color] ?? "#ffffff";
+    ctx.fill();
+  }
+}
+
 function drawRecord(
   ctx: CanvasRenderingContext2D,
   e: Drawable,
@@ -143,6 +169,50 @@ function drawEffect(ctx: CanvasRenderingContext2D, effect: Effect): void {
   ctx.restore();
 }
 
+// Рядки HUD міняються рідко (FPS — двічі на секунду, рахунок — по події), а
+// шаблонні рядки + масив + forEach-замикання щокадру були помітним алокатором.
+// Тому ключ із чисел кешує готові рядки; перебудова — лише коли ключ змінився.
+const hud = {
+  steps: "" as number | string,
+  fps: "" as number | string,
+  count: -1,
+  has: false,
+  score: -1,
+  hp: -1,
+  flags: -1,
+  lines: [] as string[],
+  dead: "",
+  deadKey: -1,
+};
+
+function hudLines(scene: Scene, metrics: HudMetrics): string[] {
+  const me = scene.me;
+  const count = scene.entities.length + (me ? 1 : 0);
+  const flags = me ? me.flags & (SHIELD | RAPID) : 0;
+  const score = me ? me.c : -1;
+  const hp = me ? me.a : -1;
+  if (
+    metrics.stepsPerSecond !== hud.steps || metrics.fps !== hud.fps || count !== hud.count ||
+    Boolean(me) !== hud.has || score !== hud.score || hp !== hud.hp || flags !== hud.flags
+  ) {
+    hud.steps = metrics.stepsPerSecond;
+    hud.fps = metrics.fps;
+    hud.count = count;
+    hud.has = Boolean(me);
+    hud.score = score;
+    hud.hp = hp;
+    hud.flags = flags;
+    hud.lines = [`Steps/s: ${metrics.stepsPerSecond}`, `FPS: ${metrics.fps}`, `Entities: ${count}`];
+    if (me) {
+      hud.lines.push(
+        `Score: ${me.c}`,
+        `HP: ${me.a}/3${me.flags & SHIELD ? "  [SHIELD]" : ""}${me.flags & RAPID ? "  [RAPID]" : ""}`,
+      );
+    }
+  }
+  return hud.lines;
+}
+
 function drawHud(
   ctx: CanvasRenderingContext2D,
   size: CanvasSize,
@@ -154,36 +224,28 @@ function drawHud(
   ctx.font = "14px monospace";
   ctx.fillStyle = "#ffffff";
   ctx.textAlign = "left";
-  const lines = [
-    `Steps/s: ${metrics.stepsPerSecond}`,
-    `FPS: ${metrics.fps}`,
-    `Entities: ${scene.entities.length + (me ? 1 : 0)}`,
-  ];
-  if (me) {
-    lines.push(
-      `Score: ${me.c}`,
-      `HP: ${me.a}/3${me.flags & SHIELD ? "  [SHIELD]" : ""}${me.flags & RAPID ? "  [RAPID]" : ""}`,
-    );
-  }
-  lines.forEach((text, i) => {
-    ctx.fillText(text, 20, 30 + i * 20);
-  });
+  const lines = hudLines(scene, metrics);
+  for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i] ?? "", 20, 30 + i * 20);
 
   if (me && me.flags & DEAD) {
     ctx.textAlign = "center";
     ctx.font = "bold 24px monospace";
     ctx.fillStyle = "#f85149";
-    ctx.fillText(
-      `DESTROYED — respawn in ${(me.b / 30).toFixed(1)}s`,
-      size.width / 2,
-      size.height / 2,
-    );
+    const seconds = Math.round(me.b / 3); // десяті частки секунди (me.b — тики при 30 Гц)
+    if (seconds !== hud.deadKey) {
+      hud.deadKey = seconds;
+      hud.dead = `DESTROYED — respawn in ${(me.b / 30).toFixed(1)}s`;
+    }
+    ctx.fillText(hud.dead, size.width / 2, size.height / 2);
   }
   ctx.restore();
 }
 
 // Малюємо СЦЕНУ (плоскі записи зі снапшотів), а не об'єкти симуляції: у
 // клієнта більше немає власного світу, лише те, що сказав сервер.
+// Результат drawScene — один спільний об'єкт (дійсний до наступного виклику).
+const view = { scale: 1, offsetX: 0, offsetY: 0 };
+
 export function drawScene(
   ctx: CanvasRenderingContext2D,
   size: CanvasSize,
@@ -208,14 +270,15 @@ export function drawScene(
   ctx.rect(0, 0, width, height);
   ctx.clip();
 
-  for (const e of scene.entities) drawRecord(ctx, e, images);
-  for (const b of scene.localBullets) {
-    drawRecord(ctx, { kind: 2, flags: 0, x: b.x, y: b.y, angle: b.angle }, images);
-  }
+  for (const e of scene.entities) if (e.kind !== 2) drawRecord(ctx, e, images);
+  drawBullets(ctx, scene);
   if (scene.me) drawRecord(ctx, scene.me, images, true);
   for (const effect of scene.effects) drawEffect(ctx, effect);
   ctx.restore();
 
   drawHud(ctx, size, scene, metrics);
-  return { scale, offsetX, offsetY };
+  view.scale = scale;
+  view.offsetX = offsetX;
+  view.offsetY = offsetY;
+  return view;
 }
