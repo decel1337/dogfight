@@ -1,22 +1,28 @@
 import { createApp } from "./app.ts";
 import { type Config, ConfigError, loadConfig } from "./config.ts";
 import { createLogger } from "./logger.ts";
+import { Metrics } from "./metrics.ts";
 
-const log = createLogger();
+// Рівень логів і версію читаємо до loadConfig, щоб помилки конфігу теж були JSON.
+const bootLog = createLogger({ level: "info" });
 
 function readConfig(): Config {
   try {
     return loadConfig();
   } catch (error: unknown) {
     if (!(error instanceof ConfigError)) throw error;
-    log.error(error.message);
+    bootLog.error("invalid config", { problems: error.problems });
     return process.exit(1);
   }
 }
 
 const config = readConfig();
+const log = createLogger({
+  level: config.logLevel,
+  base: { version: config.version, sha: config.gitSha },
+});
 
-const app = createApp({ config, log });
+const app = createApp({ config, log, metrics: new Metrics() });
 
 // Сервер не «ковтає» непередбачені помилки: після них стан процесу
 // невідомий. Логуємо причину й завершуємось з кодом 1 (supervisor
@@ -38,6 +44,7 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
   process.on(signal, async () => {
     if (shuttingDown) return;
     shuttingDown = true;
+    const began = Date.now();
     log.info("signal received", { signal });
 
     // Страховка: якщо щось зависло, не висимо вічно.
@@ -49,6 +56,7 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 
     try {
       await app.stop();
+      log.info("shutdown complete", { signal, durationMs: Date.now() - began });
       process.exitCode = 0; // цикл подій спорожніє сам -> код 0
     } catch (error: unknown) {
       log.error("shutdown failed", { error: describe(error) });
@@ -60,4 +68,10 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 // Обробники сигналів реєструємо ДО "listening": інакше сигнал, що прийшов
 // одразу після старту, вбив би процес із кодом сигналу замість graceful shutdown.
 const address = await app.start();
-log.info("listening", { host: address.address, port: address.port, logDir: config.logDir });
+log.info("listening", {
+  host: address.address,
+  port: address.port,
+  logDir: config.logDir,
+  node: process.version,
+  pid: process.pid,
+});

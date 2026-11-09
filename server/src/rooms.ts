@@ -1,5 +1,5 @@
-import { EventEmitter } from "node:events";
 import { randomBytes } from "node:crypto";
+import { EventEmitter } from "node:events";
 import { type Arena, type PlayerId, playerId } from "@dogfight/shared/types";
 
 export class RoomFullError extends Error {
@@ -136,7 +136,12 @@ export class Room extends EventEmitter<RoomEvents> {
   chat(id: PlayerId, text: string): RoomChatMessage | null {
     const player = this.#players.get(id);
     if (!player) return null;
-    const message: RoomChatMessage = { from: player.name, fromId: player.id, text, t: this.now() };
+    const message: RoomChatMessage = {
+      from: player.name,
+      fromId: player.id,
+      text,
+      t: this.now(),
+    };
     this.record("chat", { from: player.id, text });
     this.emit("chat", message);
     return message;
@@ -171,7 +176,12 @@ export class RoomManager extends EventEmitter<RoomManagerEvents> {
   readonly #rooms = new Map<string, Room>();
   readonly #idleTimers = new Map<string, NodeJS.Timeout>();
 
-  constructor({ maxRooms, maxPlayers, idleMs, now = Date.now }: RoomManagerOptions) {
+  constructor({
+    maxRooms,
+    maxPlayers,
+    idleMs,
+    now = Date.now,
+  }: RoomManagerOptions) {
     super();
     this.maxRooms = maxRooms;
     this.maxPlayers = maxPlayers;
@@ -187,7 +197,11 @@ export class RoomManager extends EventEmitter<RoomManagerEvents> {
     name,
     maxPlayers,
     arena,
-  }: { name?: string; maxPlayers?: number; arena?: Arena } = {}): Room {
+  }: {
+    name?: string;
+    maxPlayers?: number;
+    arena?: Arena;
+  } = {}): Room {
     if (this.size >= this.maxRooms) throw new TooManyRoomsError(this.maxRooms);
 
     const id = `r-${randomBytes(4).toString("hex")}`;

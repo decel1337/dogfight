@@ -1,16 +1,17 @@
 import { createReadStream } from "node:fs";
-import { readFile, readdir, stat } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import { setTimeout as delay } from "node:timers/promises";
-import type { Config } from "./config.ts";
+import type { Arena } from "@dogfight/shared/types";
 import { MAX_BOTS } from "./bots.ts";
+import type { Config } from "./config.ts";
 import { MatchLogs } from "./log/matchlog.ts";
 import { type Logger, silentLogger } from "./logger.ts";
+import { Metrics } from "./metrics.ts";
 import { RoomManager, TooManyRoomsError } from "./rooms.ts";
-import type { Arena } from "@dogfight/shared/types";
 import { serveStatic } from "./static.ts";
 import { attachWebSocket } from "./ws.ts";
 
@@ -19,7 +20,11 @@ export class HttpError extends Error {
   readonly status: number;
   readonly headers: Record<string, string>;
 
-  constructor(status: number, message: string, headers: Record<string, string> = {}) {
+  constructor(
+    status: number,
+    message: string,
+    headers: Record<string, string> = {},
+  ) {
     super(message);
     this.name = "HttpError";
     this.status = status;
@@ -48,13 +53,18 @@ function sendJson(
 
 function allow(req: http.IncomingMessage, methods: readonly string[]): void {
   if (!methods.includes(req.method ?? "")) {
-    throw new HttpError(405, "метод не підтримується", { allow: methods.join(", ") });
+    throw new HttpError(405, "метод не підтримується", {
+      allow: methods.join(", "),
+    });
   }
 }
 
 // Читаємо тіло з жорстким лімітом. Перевищення -> 413, а решту тіла
 // відкидаємо (resume), не накопичуючи в пам'яті.
-function readBody(req: http.IncomingMessage, maxBytes: number): Promise<Buffer> {
+function readBody(
+  req: http.IncomingMessage,
+  maxBytes: number,
+): Promise<Buffer> {
   const declared = Number(req.headers["content-length"]);
   if (declared > maxBytes) {
     req.resume();
@@ -79,7 +89,10 @@ function readBody(req: http.IncomingMessage, maxBytes: number): Promise<Buffer> 
   });
 }
 
-async function readJson(req: http.IncomingMessage, maxBytes: number): Promise<unknown> {
+async function readJson(
+  req: http.IncomingMessage,
+  maxBytes: number,
+): Promise<unknown> {
   const type = req.headers["content-type"] ?? "";
   if (!type.toLowerCase().startsWith("application/json")) {
     req.resume();
@@ -94,7 +107,10 @@ async function readJson(req: http.IncomingMessage, maxBytes: number): Promise<un
 }
 
 const isInt = (value: unknown, min: number, max: number): value is number =>
-  typeof value === "number" && Number.isInteger(value) && value >= min && value <= max;
+  typeof value === "number" &&
+  Number.isInteger(value) &&
+  value >= min &&
+  value <= max;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -133,7 +149,10 @@ export function validateRoomInput(
   }
   if (body.maxPlayers !== undefined) {
     if (!isInt(body.maxPlayers, 1, config.maxPlayersPerRoom)) {
-      throw new HttpError(400, `maxPlayers: ціле 1..${config.maxPlayersPerRoom}`);
+      throw new HttpError(
+        400,
+        `maxPlayers: ціле 1..${config.maxPlayersPerRoom}`,
+      );
     }
     input.maxPlayers = body.maxPlayers;
   }
@@ -152,15 +171,22 @@ export interface App {
   server: http.Server;
   rooms: RoomManager;
   matchLogs: MatchLogs;
+  metrics: Metrics;
   ws: ReturnType<typeof attachWebSocket>;
   start(): Promise<AddressInfo>;
   stop(): Promise<void>;
+  readonly ready: boolean;
 }
 
 export function createApp({
   config,
   log = silentLogger,
-}: { config: Config; log?: Logger }): App {
+  metrics = new Metrics({ defaultMetrics: false }),
+}: {
+  config: Config;
+  log?: Logger;
+  metrics?: Metrics;
+}): App {
   const rooms = new RoomManager({
     maxRooms: config.maxRooms,
     maxPlayers: config.maxPlayersPerRoom,
@@ -177,11 +203,24 @@ export function createApp({
   const server = http.createServer((req, res) => {
     handle(req, res).catch((error: unknown) => onRequestError(req, res, error));
   });
-  const ws = attachWebSocket({ server, rooms, config, log });
+  const ws = attachWebSocket({ server, rooms, config, log, metrics });
+  metrics.bind({
+    connections: () => ws.stats().clients,
+    players: () => rooms.list().reduce((sum, r) => sum + r.players, 0),
+    rooms: () => rooms.size,
+    matches: () => ws.matchStats(),
+  });
+
+  // Готовність (readiness) на відміну від життєздатності (liveness):
+  // /health = «процес живий, не перезапускай»; /ready = «можна слати трафік».
+  // Під час shutdown /ready -> 503, тож балансувальник перестає слати нових
+  // гравців, а /health лишається 200 (процес не треба вбивати передчасно).
+  let ready = false;
 
   // Некоректний HTTP від клієнта — не привід падати.
   server.on("clientError", (_error, socket) => {
-    if (socket.writable) socket.end("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n");
+    if (socket.writable)
+      socket.end("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n");
     else socket.destroy();
   });
 
@@ -192,31 +231,63 @@ export function createApp({
   ): void {
     if (error instanceof HttpError) {
       if (!res.headersSent) {
-        sendJson(res, error.status, { error: error.message }, {
-          ...error.headers,
-          ...(error.status === 413 ? { connection: "close" } : {}),
-        });
+        sendJson(
+          res,
+          error.status,
+          { error: error.message },
+          {
+            ...error.headers,
+            ...(error.status === 413 ? { connection: "close" } : {}),
+          },
+        );
       }
       return;
     }
-    log.error("request failed", { url: req.url, error: error instanceof Error ? (error.stack ?? error.message) : String(error),
+    log.error("request failed", {
+      url: req.url,
+      error:
+        error instanceof Error ? (error.stack ?? error.message) : String(error),
     });
     if (!res.headersSent) sendJson(res, 500, { error: "внутрішня помилка" });
     else res.destroy();
   }
 
-  async function handle(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  async function handle(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+  ): Promise<void> {
     const { pathname } = new URL(req.url ?? "/", "http://localhost");
 
     if (pathname === "/health") {
       allow(req, ["GET", "HEAD"]);
       return sendJson(res, 200, {
         status: "ok",
+        version: config.version,
+        sha: config.gitSha,
         uptimeSec: Math.round((Date.now() - startedAt) / 1000),
         rooms: rooms.size,
         clients: ws.stats().clients,
         rss: process.memoryUsage.rss(),
       });
+    }
+
+    if (pathname === "/ready") {
+      allow(req, ["GET", "HEAD"]);
+      return ready
+        ? sendJson(res, 200, { status: "ready" })
+        : sendJson(res, 503, { status: "not ready" });
+    }
+
+    if (pathname === "/metrics" && config.enableMetrics) {
+      allow(req, ["GET", "HEAD"]);
+      const body = await metrics.render();
+      res.writeHead(200, {
+        "content-type": metrics.contentType,
+        "content-length": Buffer.byteLength(body),
+        "cache-control": "no-store",
+      });
+      res.end(body);
+      return;
     }
 
     // Діагностика такту: тривалість тика й «тремтіння» таймера (мс).
@@ -239,12 +310,18 @@ export function createApp({
       allow(req, ["GET", "HEAD", "POST"]);
       if (req.method !== "POST") return sendJson(res, 200, rooms.list());
 
-      const input = validateRoomInput(await readJson(req, config.maxBodyBytes), config);
+      const input = validateRoomInput(
+        await readJson(req, config.maxBodyBytes),
+        config,
+      );
       try {
         const room = rooms.create(input);
-        return sendJson(res, 201, room.summary(), { location: `/api/rooms/${room.id}` });
+        return sendJson(res, 201, room.summary(), {
+          location: `/api/rooms/${room.id}`,
+        });
       } catch (error: unknown) {
-        if (error instanceof TooManyRoomsError) throw new HttpError(429, error.message);
+        if (error instanceof TooManyRoomsError)
+          throw new HttpError(429, error.message);
         throw error;
       }
     }
@@ -254,7 +331,8 @@ export function createApp({
       allow(req, ["POST", "DELETE"]);
       const room = rooms.get(botsRoute[1] ?? "");
       if (!room) throw new HttpError(404, "кімнату не знайдено");
-      if (req.method === "DELETE") return sendJson(res, 200, { bots: ws.setBots(room, "clear") });
+      if (req.method === "DELETE")
+        return sendJson(res, 200, { bots: ws.setBots(room, "clear") });
       const count = validateBotCount(await readJson(req, config.maxBodyBytes));
       return sendJson(res, 200, { bots: ws.setBots(room, "add", count) });
     }
@@ -288,12 +366,17 @@ export function createApp({
 
     const staticInfo = await stat(config.staticDir).catch(() => null);
     if (!staticInfo?.isDirectory()) {
-      throw new HttpError(404, "клієнт не зібрано: npm run build, або відкрийте Vite (5173)");
+      throw new HttpError(
+        404,
+        "клієнт не зібрано: npm run build, або відкрийте Vite (5173)",
+      );
     }
     return serveStatic(req, res, config.staticDir, pathname);
   }
 
-  async function listReplays(): Promise<{ id: string; bytes: number; modified: string }[]> {
+  async function listReplays(): Promise<
+    { id: string; bytes: number; modified: string }[]
+  > {
     const files = await readdir(config.logDir).catch((): string[] => []);
     const items: { id: string; bytes: number; modified: string }[] = [];
     for (const file of files) {
@@ -331,7 +414,8 @@ export function createApp({
       await pipeline(createReadStream(file), res);
     } catch (error: unknown) {
       // Клієнт обірвав завантаження — це нормально, не помилка сервера.
-      const code = error instanceof Error && "code" in error ? error.code : undefined;
+      const code =
+        error instanceof Error && "code" in error ? error.code : undefined;
       if (code !== "ERR_STREAM_PREMATURE_CLOSE") throw error;
     }
   }
@@ -342,7 +426,12 @@ export function createApp({
     server,
     rooms,
     matchLogs,
+    metrics,
     ws,
+
+    get ready() {
+      return ready;
+    },
 
     start() {
       return new Promise<AddressInfo>((resolve, reject) => {
@@ -353,6 +442,7 @@ export function createApp({
           if (address === null || typeof address === "string") {
             reject(new Error("сервер не слухає TCP-порт"));
           } else {
+            ready = true;
             resolve(address);
           }
         });
@@ -363,6 +453,8 @@ export function createApp({
     // сокети (1001), закриваємо кімнати, дочікуємось запису логів.
     stop() {
       stopping ??= (async () => {
+        ready = false; // /ready -> 503: балансувальник більше не шле трафік
+        ws.drain();
         log.info("shutdown: stop accepting connections");
         const closed = new Promise<void>((resolve) => {
           server.close(() => resolve());
@@ -375,7 +467,10 @@ export function createApp({
         log.info("shutdown: match logs flushed");
 
         // Решту (повільні клієнти) добиваємо за таймаутом.
-        const force = setTimeout(() => server.closeAllConnections(), config.shutdownTimeoutMs);
+        const force = setTimeout(
+          () => server.closeAllConnections(),
+          config.shutdownTimeoutMs,
+        );
         await closed;
         clearTimeout(force);
         log.info("shutdown: complete");

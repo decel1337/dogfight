@@ -1,4 +1,8 @@
-import { type RequestOptions, postJson, requestJson } from "../assets/loader.ts";
+import {
+  postJson,
+  type RequestOptions,
+  requestJson,
+} from "../assets/loader.ts";
 
 // Кімната в списку лобі. Приходить з мережі, тож створюється лише через
 // parseRooms (перевірка форми), а не приведенням типу.
@@ -22,10 +26,19 @@ export interface LobbyEventMap {
   joined: JoinDetail;
 }
 
-type LobbyListener<K extends keyof LobbyEventMap> = (event: CustomEvent<LobbyEventMap[K]>) => void;
+type LobbyListener<K extends keyof LobbyEventMap> = (
+  event: CustomEvent<LobbyEventMap[K]>,
+) => void;
 
-export type RequestFn = (url: string, options: RequestOptions & { retries?: number }) => Promise<unknown>;
-export type PostFn = (url: string, body: unknown, options: RequestOptions) => Promise<unknown>;
+export type RequestFn = (
+  url: string,
+  options: RequestOptions & { retries?: number },
+) => Promise<unknown>;
+export type PostFn = (
+  url: string,
+  body: unknown,
+  options: RequestOptions,
+) => Promise<unknown>;
 
 export interface LobbyOptions {
   url?: string;
@@ -43,12 +56,20 @@ function parseRooms(raw: unknown): RoomInfo[] {
   return raw.map((item: unknown): RoomInfo => {
     if (!isRecord(item)) throw new TypeError("Некоректна кімната");
     const { id, name, players, maxPlayers, arena } = item;
-    if (typeof id !== "string" || typeof name !== "string" || typeof maxPlayers !== "number") {
+    if (
+      typeof id !== "string" ||
+      typeof name !== "string" ||
+      typeof maxPlayers !== "number"
+    ) {
       throw new TypeError("Некоректна кімната");
     }
     const room: RoomInfo = { id, name, maxPlayers };
     if (typeof players === "number") room.players = players;
-    if (isRecord(arena) && typeof arena.width === "number" && typeof arena.height === "number") {
+    if (
+      isRecord(arena) &&
+      typeof arena.width === "number" &&
+      typeof arena.height === "number"
+    ) {
       room.arena = { width: arena.width, height: arena.height };
     }
     return room;
@@ -111,7 +132,10 @@ export class Lobby extends EventTarget {
   }
 
   // Єдина точка відправки: назва й detail узгоджені через LobbyEventMap.
-  #emit<K extends keyof LobbyEventMap>(type: K, detail: LobbyEventMap[K]): void {
+  #emit<K extends keyof LobbyEventMap>(
+    type: K,
+    detail: LobbyEventMap[K],
+  ): void {
     this.dispatchEvent(new CustomEvent(type, { detail }));
   }
 
@@ -131,12 +155,19 @@ export class Lobby extends EventTarget {
       this.#emit("rooms", rooms);
     } catch (error: unknown) {
       if (lifetime?.signal.aborted) return;
-      this.#emit("lobby-error", error instanceof Error ? error : new Error(String(error)));
+      this.#emit(
+        "lobby-error",
+        error instanceof Error ? error : new Error(String(error)),
+      );
     }
   }
 
   // Створює кімнату на сервері (POST /api/rooms) і одразу оновлює список.
-  async createRoom({ name }: { name?: string | undefined } = {}): Promise<unknown> {
+  async createRoom({
+    name,
+  }: {
+    name?: string | undefined;
+  } = {}): Promise<unknown> {
     const room = await this.post(this.url, name ? { name } : {}, {
       signal: this.#lifetime?.signal,
       timeoutMs: this.timeoutMs,

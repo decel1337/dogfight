@@ -1,15 +1,22 @@
 import { BULLET, DT } from "../constants.ts";
-import type { EntityId, Arena } from "../types.ts";
+import { Pool } from "../pool.ts";
 import { SHIP_FLAGS } from "../sim/entities.ts";
 import type { EntityRecord } from "../sim/entity.ts";
 import {
   type Controls,
   type Integrate,
-  integrate as sharedIntegrate,
   muzzle,
   type ShipState,
+  integrate as sharedIntegrate,
 } from "../sim/integrate.ts";
 import { lerpAngle } from "../sim/vector.ts";
+import {
+  type Arena,
+  type EntityId,
+  SEQ_ZERO,
+  type SeqNo,
+  seqNo,
+} from "../types.ts";
 import { lerpWrap, shortestDelta, wrapInto } from "./geometry.ts";
 
 // Стан корабля на клієнті: те, що приймає integrate, плюс прапорці вигляду.
@@ -20,12 +27,12 @@ export interface PredictedState extends ShipState {
 
 // Input, ще не підтверджений сервером.
 export interface PendingInput extends Controls {
-  readonly seq: number;
+  readonly seq: SeqNo;
 }
 
 // Передбачена локальна куля.
 export interface PredictedBullet {
-  seq: number;
+  seq: SeqNo;
   tag: number;
   x: number;
   y: number;
@@ -79,6 +86,21 @@ export class Predictor {
   nextSeq = 1;
   offset = { x: 0, y: 0 }; // видима поправка, що затухає
   bullets: PredictedBullet[] = []; // передбачені локальні кулі
+  // Пул передбачених куль і повторно використовувані контейнери syncBullets:
+  // раніше кожен постріл і кожен снапшот створювали нові об'єкти/Map/Set.
+  readonly #bulletPool = new Pool<PredictedBullet>(() => ({
+    seq: SEQ_ZERO,
+    tag: 0,
+    x: 0,
+    y: 0,
+    vx: 0,
+    vy: 0,
+    angle: 0,
+    ttl: 0,
+    serverId: null,
+  }));
+  readonly #mine = new Map<EntityId, EntityRecord>();
+  readonly #claimed = new Set<EntityId>();
   lastCorrection = 0;
 
   constructor({
@@ -108,8 +130,11 @@ export class Predictor {
 
   // Крок симуляції клієнта: створює input з наступним seq. Повертає його
   // (його треба надіслати) разом із передбаченою кулею.
-  step(controls: Controls): { input: PendingInput; bullet: PredictedBullet | null } {
-    const input: PendingInput = { ...controls, seq: this.nextSeq++ };
+  step(controls: Controls): {
+    input: PendingInput;
+    bullet: PredictedBullet | null;
+  } {
+    const input: PendingInput = { ...controls, seq: seqNo(this.nextSeq++) };
     this.pending.push(input);
     if (this.pending.length > 120) this.pending.shift();
 
@@ -125,17 +150,16 @@ export class Predictor {
     if (next.fired === 1) {
       // Самонавідну (fired === 2) передбачити не можемо: ціль знає сервер.
       const m = muzzle(next, false);
-      bullet = {
-        seq: input.seq,
-        tag: input.seq & 0xff,
-        x: m.x,
-        y: m.y,
-        vx: m.vx,
-        vy: m.vy,
-        angle: m.angle,
-        ttl: BULLET.ttlTicks,
-        serverId: null,
-      };
+      bullet = this.#bulletPool.acquire();
+      bullet.seq = input.seq;
+      bullet.tag = input.seq & 0xff;
+      bullet.x = m.x;
+      bullet.y = m.y;
+      bullet.vx = m.vx;
+      bullet.vy = m.vy;
+      bullet.angle = m.angle;
+      bullet.ttl = BULLET.ttlTicks;
+      bullet.serverId = null;
       this.bullets.push(bullet);
     }
     return { input, bullet };
@@ -148,13 +172,34 @@ export class Predictor {
       b.x = wrapInto(b.x + b.vx * DT, width);
       b.y = wrapInto(b.y + b.vy * DT, height);
     }
-    this.bullets = this.bullets.filter((b) => b.ttl > 0);
+    this.#compactBullets(false);
+  }
+
+  // Прибирає кулі на місці й повертає їх у пул. `bySync`: критерій syncBullets
+  // (підтверджена/неіснуюча на сервері), інакше — вичерпаний ttl.
+  #compactBullets(bySync: boolean, ack: SeqNo = SEQ_ZERO): void {
+    const bullets = this.bullets;
+    let kept = 0;
+    for (const b of bullets) {
+      const keep = bySync
+        ? b.serverId !== null
+          ? this.#mine.has(b.serverId) // ще існує на сервері
+          : b.seq > ack // не підтверджена: чекаємо, поки сервер її обробить
+        : b.ttl > 0;
+      if (keep) bullets[kept++] = b;
+      else this.#bulletPool.release(b);
+    }
+    bullets.length = kept;
   }
 
   // Снапшот сервера: rec — запис НАШОГО корабля, ack — останній обработаний
   // сервером seq нашого клієнта. Повертає розмір поправки в px.
-  reconcile(rec: EntityRecord, ack: number): number {
-    for (let head = this.pending[0]; head && head.seq <= ack; head = this.pending[0]) {
+  reconcile(rec: EntityRecord, ack: SeqNo): number {
+    for (
+      let head = this.pending[0];
+      head && head.seq <= ack;
+      head = this.pending[0]
+    ) {
       this.pending.shift();
     }
 
@@ -198,15 +243,17 @@ export class Predictor {
   // показує локальна копія).
   syncBullets(
     entities: readonly EntityRecord[],
-    ack: number,
+    ack: SeqNo,
     ownerId: EntityId,
   ): Set<EntityId> {
-    const mine = new Map<EntityId, EntityRecord>();
+    const mine = this.#mine;
+    mine.clear();
     for (const e of entities) {
       if (e.kind === 2 && e.c === ownerId) mine.set(e.id, e);
     }
 
-    const claimed = new Set<EntityId>();
+    const claimed = this.#claimed;
+    claimed.clear();
     for (const b of this.bullets) {
       if (b.serverId === null) {
         for (const [id, e] of mine) {
@@ -218,10 +265,7 @@ export class Predictor {
       }
     }
 
-    this.bullets = this.bullets.filter((b) => {
-      if (b.serverId !== null) return mine.has(b.serverId); // ще існує на сервері
-      return b.seq > ack; // не підтверджена: чекаємо, поки сервер її обробить
-    });
+    this.#compactBullets(true, ack);
 
     for (const b of this.bullets) {
       if (b.serverId !== null) claimed.add(b.serverId);
@@ -241,13 +285,22 @@ export class Predictor {
   }
 
   // Без алокацій: заповнює `out` (викликач тримає один об'єкт між кадрами).
-  renderStateInto(alpha: number, out: { x: number; y: number; angle: number; thrusting: boolean }): boolean {
+  renderStateInto(
+    alpha: number,
+    out: { x: number; y: number; angle: number; thrusting: boolean },
+  ): boolean {
     if (!this.state || this.state.dead) return false;
     const { width, height } = this.arena;
     const from = this.prev ?? this.state;
     const to = this.state;
-    out.x = wrapInto(lerpWrap(from.x, to.x, alpha, width) + this.offset.x, width);
-    out.y = wrapInto(lerpWrap(from.y, to.y, alpha, height) + this.offset.y, height);
+    out.x = wrapInto(
+      lerpWrap(from.x, to.x, alpha, width) + this.offset.x,
+      width,
+    );
+    out.y = wrapInto(
+      lerpWrap(from.y, to.y, alpha, height) + this.offset.y,
+      height,
+    );
     out.angle = lerpAngle(from.angle, to.angle, alpha);
     out.thrusting = to.thrusting;
     return true;
@@ -260,7 +313,10 @@ export class Predictor {
     const to = this.state;
     return {
       x: wrapInto(lerpWrap(from.x, to.x, alpha, width) + this.offset.x, width),
-      y: wrapInto(lerpWrap(from.y, to.y, alpha, height) + this.offset.y, height),
+      y: wrapInto(
+        lerpWrap(from.y, to.y, alpha, height) + this.offset.y,
+        height,
+      ),
       angle: lerpAngle(from.angle, to.angle, alpha),
       thrusting: to.thrusting,
     };

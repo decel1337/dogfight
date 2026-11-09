@@ -1,13 +1,30 @@
 import assert from "node:assert/strict";
-import { test } from "vitest";
 import { encodeInput, encodePing } from "@dogfight/shared/codec";
 import type { CodecName } from "@dogfight/shared/protocol";
-import { type AppContext, connect, createRoom, sleep, withApp } from "./helpers.ts";
+import { seqNo as asSeq, tick as asTick } from "@dogfight/shared/types";
+import { test } from "vitest";
+import {
+  type AppContext,
+  connect,
+  createRoom,
+  sleep,
+  withApp,
+} from "./helpers.ts";
 
-async function join(ctx: AppContext, roomId: string, name: string, codec?: CodecName) {
+async function join(
+  ctx: AppContext,
+  roomId: string,
+  name: string,
+  codec?: CodecName,
+) {
   const client = connect(ctx.wsUrl);
   await client.opened;
-  client.send({ type: "join", room: roomId, name, ...(codec ? { codec } : {}) });
+  client.send({
+    type: "join",
+    room: roomId,
+    name,
+    ...(codec ? { codec } : {}),
+  });
   const joined = await client.next("joined");
   return { client, joined };
 }
@@ -32,7 +49,16 @@ test("бінарний кодек: снапшоти ~30 Гц, ack зростає
     assert.ok(first.entities.some((e) => e.id === joined.ship && e.kind === 1));
 
     for (let seq = 1; seq <= 5; seq++) {
-      client.ws.send(encodeInput({ type: "input", seq, tick: first.tick, thrust: 1, turn: 0, fire: 0 }));
+      client.ws.send(
+        encodeInput({
+          type: "input",
+          seq: asSeq(seq),
+          tick: first.tick,
+          thrust: 1,
+          turn: 0,
+          fire: 0,
+        }),
+      );
       await sleep(34);
     }
     await sleep(100);
@@ -49,11 +75,21 @@ test("json кодек: ті самі повідомлення текстом", a
     const room = await createRoom(ctx);
     const { client, joined } = await join(ctx, room.id, "Ann", "json");
     assert.equal(joined.codec, "json");
-    client.send({ type: "input", seq: 1, tick: 0, thrust: 1, turn: 0, fire: 0 });
+    client.send({
+      type: "input",
+      seq: 1,
+      tick: 0,
+      thrust: 1,
+      turn: 0,
+      fire: 0,
+    });
     await sleep(120);
-    const snap = (await client.next("snapshot"));
+    const snap = await client.next("snapshot");
     assert.ok(snap.entities.length > 0);
-    assert.equal(client.inbox.some((m) => m.type === "snapshot" && m.ack === 1), true);
+    assert.equal(
+      client.inbox.some((m) => m.type === "snapshot" && m.ack === 1),
+      true,
+    );
   });
 });
 
@@ -72,7 +108,14 @@ test("input-чит: turn=1000 у JSON закриває сокет з 4002", asyn
   await withApp({}, async (ctx) => {
     const room = await createRoom(ctx);
     const { client } = await join(ctx, room.id, "Cheat", "json");
-    client.send({ type: "input", seq: 1, tick: 0, thrust: 1, turn: 1000, fire: 0 });
+    client.send({
+      type: "input",
+      seq: 1,
+      tick: 0,
+      thrust: 1,
+      turn: 1000,
+      fire: 0,
+    });
     assert.equal((await client.closed).code, 4002);
   });
 });
@@ -82,7 +125,16 @@ test("потік input не з'їдає ліміт чату", async () => {
     const room = await createRoom(ctx);
     const { client } = await join(ctx, room.id, "Pilot");
     for (let seq = 1; seq <= 60; seq++) {
-      client.ws.send(encodeInput({ type: "input", seq, tick: 0, thrust: 0, turn: 0, fire: 0 }));
+      client.ws.send(
+        encodeInput({
+          type: "input",
+          seq: asSeq(seq),
+          tick: asTick(0),
+          thrust: 0,
+          turn: 0,
+          fire: 0,
+        }),
+      );
     }
     client.send({ type: "chat", text: "ще тут" });
     assert.equal((await client.next("chat")).text, "ще тут");
@@ -120,7 +172,10 @@ test("/api/stats показує тривалість тика й джитер", 
     await sleep(400);
     const stats = (await (await fetch(`${ctx.http}/api/stats`)).json()) as {
       tickRate: number;
-      matches: { players: number; ticker: { workMs: { avg: number }; samples: number } }[];
+      matches: {
+        players: number;
+        ticker: { workMs: { avg: number }; samples: number };
+      }[];
     };
     assert.equal(stats.tickRate, 30);
     const m = stats.matches[0];

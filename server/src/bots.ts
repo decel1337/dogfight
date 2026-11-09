@@ -1,7 +1,7 @@
-import type { InputMessage } from "@dogfight/shared/protocol";
 import { mulberry32, type Rng } from "@dogfight/shared/prng";
+import type { InputMessage } from "@dogfight/shared/protocol";
 import type { EntityRecord } from "@dogfight/shared/sim";
-import { type PlayerId, playerId } from "@dogfight/shared/types";
+import { type PlayerId, playerId, seqNo } from "@dogfight/shared/types";
 import type { Match, MatchFrame } from "./match.ts";
 
 // Боти — це «гравці без сокета». Вони НЕ чіпають світ напряму: щотику дивляться
@@ -77,13 +77,14 @@ export class Bot {
       turn = diff > 0.08 ? 1 : diff < -0.08 ? -1 : 0;
       // «Heavy shooting»: стріляємо майже завжди, коли ціль у конусі; кожен
       // 8-й постріл — самонавідний (fire: 2).
-      if (Math.abs(diff) < 0.6 * this.aggression + 0.3) fire = this.#seq % 8 === 0 ? 2 : 1;
+      if (Math.abs(diff) < 0.6 * this.aggression + 0.3)
+        fire = this.#seq % 8 === 0 ? 2 : 1;
       if (best < 120 * 120) thrust = 0;
     }
 
     const input: InputMessage = {
       type: "input",
-      seq: ++this.#seq,
+      seq: seqNo(++this.#seq),
       tick: frame.tick,
       thrust,
       turn,

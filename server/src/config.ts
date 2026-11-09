@@ -11,7 +11,10 @@ export class ConfigError extends Error {
   }
 }
 
-const DEFAULT_STATIC_DIR = path.resolve(import.meta.dirname, "../../client/dist");
+const DEFAULT_STATIC_DIR = path.resolve(
+  import.meta.dirname,
+  "../../client/dist",
+);
 
 // env завжди рядки (або відсутні): порожній рядок рахуємо за «не задано».
 const unset = (value: string | undefined): value is undefined | "" =>
@@ -24,7 +27,13 @@ function int(fallback: number, min: number, max: number) {
     .string()
     .optional()
     .transform((raw) => (unset(raw) ? fallback : Number(raw)))
-    .pipe(z.number({ invalid_type_error: message }).int(message).min(min, message).max(max, message));
+    .pipe(
+      z
+        .number({ invalid_type_error: message })
+        .int(message)
+        .min(min, message)
+        .max(max, message),
+    );
 }
 
 function bool(fallback: boolean) {
@@ -78,6 +87,20 @@ const EnvSchema = z.object({
 
   SHUTDOWN_TIMEOUT_MS: int(5000, 100, 120_000),
   ENABLE_DEBUG_ROUTES: bool(false),
+
+  // Production (Lab 8)
+  LOG_LEVEL: z
+    .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
+    .default("info"),
+  // Через кому. Порожньо = лише same-origin (Origin.host == Host).
+  ALLOWED_ORIGINS: text(""),
+  MAX_CONNECTIONS_PER_IP: int(20, 1, 10_000),
+  // true лише за довіреним reverse proxy: тоді IP клієнта береться з X-Forwarded-For.
+  TRUST_PROXY: bool(false),
+  ENABLE_METRICS: bool(true),
+  // Версія збірки: у контейнері задається з git SHA (build-arg).
+  GIT_SHA: text("dev"),
+  APP_VERSION: text("0.0.0"),
 });
 
 export interface Config {
@@ -101,6 +124,20 @@ export interface Config {
   readonly bufferedLimit: number;
   readonly shutdownTimeoutMs: number;
   readonly debugRoutes: boolean;
+  readonly logLevel:
+    | "fatal"
+    | "error"
+    | "warn"
+    | "info"
+    | "debug"
+    | "trace"
+    | "silent";
+  readonly allowedOrigins: readonly string[];
+  readonly maxConnectionsPerIp: number;
+  readonly trustProxy: boolean;
+  readonly enableMetrics: boolean;
+  readonly gitSha: string;
+  readonly version: string;
 }
 
 // Єдине місце, де сервер читає process.env. Решта коду отримує готовий,
@@ -138,6 +175,17 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     bufferedLimit: e.BUFFERED_LIMIT,
     shutdownTimeoutMs: e.SHUTDOWN_TIMEOUT_MS,
     debugRoutes: e.ENABLE_DEBUG_ROUTES,
+    logLevel: e.LOG_LEVEL,
+    allowedOrigins: Object.freeze(
+      e.ALLOWED_ORIGINS.split(",")
+        .map((o) => o.trim().replace(/\/+$/, ""))
+        .filter((o) => o !== ""),
+    ),
+    maxConnectionsPerIp: e.MAX_CONNECTIONS_PER_IP,
+    trustProxy: e.TRUST_PROXY,
+    enableMetrics: e.ENABLE_METRICS,
+    gitSha: e.GIT_SHA,
+    version: e.APP_VERSION,
   };
   return Object.freeze(config);
 }

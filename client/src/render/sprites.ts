@@ -1,5 +1,8 @@
 export interface SpriteSheet {
-  readonly image: CanvasImageSource & { readonly width: number; readonly height: number };
+  readonly image: CanvasImageSource & {
+    readonly width: number;
+    readonly height: number;
+  };
   readonly frameWidth?: number;
   readonly frameHeight?: number;
 }

@@ -3,11 +3,12 @@ import { DT, TICK_MS } from "@dogfight/shared/constants";
 import {
   type PredictedBullet,
   Predictor,
+  type SampleMode,
   SampleScratch,
   ServerClock,
-  type SampleMode,
   SnapshotBuffer,
 } from "@dogfight/shared/netcode";
+import { Pool } from "@dogfight/shared/pool";
 import type {
   ClientGameMessage,
   CodecName,
@@ -23,23 +24,55 @@ import {
   type Integrate,
   integrate as sharedIntegrate,
 } from "@dogfight/shared/sim";
-import type { Arena, EntityId } from "@dogfight/shared/types";
+import {
+  type Arena,
+  type EntityId,
+  NO_ENTITY,
+  type SeqNo,
+  seqNo,
+  TICK_ZERO,
+  type Tick,
+  tick,
+} from "@dogfight/shared/types";
 
-const SOUND_BY_EVENT = { 1: "fire", 2: "hit", 3: "explode" } as const satisfies Record<
-  GameEvent["kind"],
-  string
->;
+const SOUND_BY_EVENT = {
+  1: "fire",
+  2: "hit",
+  3: "explode",
+} as const satisfies Record<GameEvent["kind"], string>;
 
 // Візуальні ефекти: union за `type`, тож draw розбирає його вичерпним switch.
-export type Effect =
-  | { type: "spark"; x: number; y: number; age: number }
-  | {
-      type: "explosion";
-      x: number;
-      y: number;
-      age: number;
-      particles: { angle: number; speed: number }[];
-    };
+export type SparkEffect = {
+  readonly type: "spark";
+  x: number;
+  y: number;
+  age: number;
+};
+export type ExplosionEffect = {
+  readonly type: "explosion";
+  x: number;
+  y: number;
+  age: number;
+  readonly particles: { angle: number; speed: number }[]; // рівно PARTICLES штук, значення перезаписуються
+};
+export type Effect = SparkEffect | ExplosionEffect;
+
+const PARTICLES = 16;
+
+// Ефекти беруться з пулів і повертаються туди, коли відіграли (age >= тривалості).
+const sparkPool = new Pool<SparkEffect>(() => ({
+  type: "spark",
+  x: 0,
+  y: 0,
+  age: 0,
+}));
+const explosionPool = new Pool<ExplosionEffect>(() => ({
+  type: "explosion",
+  x: 0,
+  y: 0,
+  age: 0,
+  particles: Array.from({ length: PARTICLES }, () => ({ angle: 0, speed: 0 })),
+}));
 
 // Наш корабель у сцені: запис сервера, можливо перекритий передбаченням.
 export interface MeRecord extends EntityRecord {
@@ -145,8 +178,19 @@ export class NetGame {
   readonly #scratch = new SampleScratch();
   readonly #view = { x: 0, y: 0, angle: 0, thrusting: false };
   readonly #me: Mutable<MeRecord> = {
-    id: 0 as EntityId, kind: 1, flags: 0, x: 0, y: 0, vx: 0, vy: 0, angle: 0, a: 0, b: 0, c: 0,
-    predicted: false, thrusting: undefined,
+    id: NO_ENTITY,
+    kind: 1,
+    flags: 0,
+    x: 0,
+    y: 0,
+    vx: 0,
+    vy: 0,
+    angle: 0,
+    a: 0,
+    b: 0,
+    c: 0,
+    predicted: false,
+    thrusting: undefined,
   };
   readonly #entities: EntityRecord[] = [];
   readonly #bulletPool: { x: number; y: number; angle: number }[] = [];
@@ -156,7 +200,7 @@ export class NetGame {
   ownRecord: EntityRecord | null = null; // останній запис нашого корабля від сервера
   claimed = new Set<EntityId>(); // серверні кулі, замінені локальними копіями
   effects: Effect[] = [];
-  pendingEvents: (GameEvent & { tick: number })[] = [];
+  pendingEvents: (GameEvent & { tick: Tick })[] = [];
   renderTick = 0;
   mode: SampleMode = "empty";
 
@@ -172,7 +216,13 @@ export class NetGame {
   lastAckGap = 0;
   stepsSent = 0;
 
-  constructor({ joined, send, now = () => performance.now(), play = () => {}, options = {} }: NetGameOptions) {
+  constructor({
+    joined,
+    send,
+    now = () => performance.now(),
+    play = () => {},
+    options = {},
+  }: NetGameOptions) {
     this.shipId = joined.ship;
     this.arena = joined.arena;
     this.codec = joined.codec;
@@ -210,10 +260,10 @@ export class NetGame {
 
   // ---------- вихідні повідомлення ----------
 
-  #estimatedTick(): number {
+  #estimatedTick(): Tick {
     return this.clock.ready
-      ? Math.max(0, Math.round(this.clock.serverTickAt(this.now())))
-      : 0;
+      ? tick(Math.max(0, Math.round(this.clock.serverTickAt(this.now()))))
+      : TICK_ZERO;
   }
 
   // Один крок симуляції клієнта: тим самим integrate, що й сервер,
@@ -224,21 +274,32 @@ export class NetGame {
       : this.#unpredictedStep(controls);
     if (bullet) this.play("fire");
 
-    const message = { type: "input" as const, ...input, tick: this.#estimatedTick() };
+    const message = {
+      type: "input" as const,
+      ...input,
+      tick: this.#estimatedTick(),
+    };
     this.sendRaw(this.codec === "binary" ? encodeInput(message) : message);
     this.stepsSent++;
   }
 
   // Режим ?predict=0: input лише відправляємо, а свій корабель малюємо за
   // снапшотами сервера, як чужий (видно повну затримку).
-  #unpredictedStep(controls: Controls): { input: Controls & { seq: number }; bullet: PredictedBullet | null } {
-    const input = { ...controls, seq: this.predictor.nextSeq++ };
+  #unpredictedStep(controls: Controls): {
+    input: Controls & { seq: SeqNo };
+    bullet: PredictedBullet | null;
+  } {
+    const input = { ...controls, seq: seqNo(this.predictor.nextSeq++) };
     return { input, bullet: null };
   }
 
   ping(): void {
     const t = Math.round(this.now()) >>> 0;
-    this.sendRaw(this.codec === "binary" ? encodePing({ t }) : { type: "ping" as const, t });
+    this.sendRaw(
+      this.codec === "binary"
+        ? encodePing({ t })
+        : { type: "ping" as const, t },
+    );
   }
 
   // ---------- вхідні повідомлення ----------
@@ -271,7 +332,11 @@ export class NetGame {
       if (this.options.predict) {
         const correction = this.predictor.reconcile(own, msg.ack);
         push(this.corrections, correction);
-        this.claimed = this.predictor.syncBullets(msg.entities, msg.ack, this.shipId);
+        this.claimed = this.predictor.syncBullets(
+          msg.entities,
+          msg.ack,
+          this.shipId,
+        );
       }
     }
     if (!this.options.predict) push(this.corrections, 0);
@@ -279,7 +344,8 @@ export class NetGame {
   }
 
   onEvents(msg: EventsMessage): void {
-    for (const event of msg.events) this.pendingEvents.push({ tick: msg.tick, ...event });
+    for (const event of msg.events)
+      this.pendingEvents.push({ tick: msg.tick, ...event });
   }
 
   // Події сервера відтворюємо, коли час рендеру дійшов до їхнього тику:
@@ -297,18 +363,28 @@ export class NetGame {
       const mine = e.kind === 1 && e.id === this.shipId && this.options.predict;
       if (!mine) this.play(SOUND_BY_EVENT[e.kind]);
       if (e.kind === 3) this.#explode(e.x, e.y);
-      else if (e.kind === 2) this.effects.push({ type: "spark", x: e.x, y: e.y, age: 0 });
+      else if (e.kind === 2) {
+        const spark = sparkPool.acquire();
+        spark.x = e.x;
+        spark.y = e.y;
+        spark.age = 0;
+        this.effects.push(spark);
+      }
     }
     events.length = kept;
   }
 
   #explode(x: number, y: number): void {
-    const particles: { angle: number; speed: number }[] = [];
-    for (let i = 0; i < 16; i++) {
+    const boom = explosionPool.acquire();
+    boom.x = x;
+    boom.y = y;
+    boom.age = 0;
+    for (const p of boom.particles) {
       // Візуальний ефект: тут можна Math.random(), це не симуляція.
-      particles.push({ angle: Math.random() * Math.PI * 2, speed: 40 + Math.random() * 120 });
+      p.angle = Math.random() * Math.PI * 2;
+      p.speed = 40 + Math.random() * 120;
     }
-    this.effects.push({ type: "explosion", x, y, age: 0, particles });
+    this.effects.push(boom);
   }
 
   // ---------- малювання ----------
@@ -319,7 +395,11 @@ export class NetGame {
       ? this.clock.serverTickAt(now) - this.options.interpolationDelayTicks
       : 0;
 
-    this.mode = this.buffer.sampleInto(this.#scratch, this.renderTick, this.arena);
+    this.mode = this.buffer.sampleInto(
+      this.#scratch,
+      this.renderTick,
+      this.arena,
+    );
     const sampled = this.#scratch.entities;
     this.#releaseEvents();
 
@@ -328,7 +408,13 @@ export class NetGame {
     let kept = 0;
     for (const effect of effects) {
       effect.age += frameSeconds;
-      if (effect.age < EXPLOSION_SECONDS) effects[kept++] = effect;
+      if (effect.age < EXPLOSION_SECONDS) {
+        effects[kept++] = effect;
+      } else if (effect.type === "spark") {
+        sparkPool.release(effect);
+      } else {
+        explosionPool.release(effect);
+      }
     }
     effects.length = kept;
 
@@ -373,7 +459,8 @@ export class NetGame {
     entities.length = 0;
     for (const e of sampled) {
       if (hasMe && e.id === me.id) continue;
-      if (predicting && (e.id === this.shipId || this.claimed.has(e.id))) continue;
+      if (predicting && (e.id === this.shipId || this.claimed.has(e.id)))
+        continue;
       entities.push(e);
     }
 
@@ -401,7 +488,8 @@ export class NetGame {
   // ---------- для netgraph ----------
 
   netStats(): NetStats {
-    const mean = (xs: number[]): number => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
+    const mean = (xs: number[]): number =>
+      xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0;
     const rttMean = mean(this.rttSamples);
     const jitter = mean(this.rttSamples.map((r) => Math.abs(r - rttMean)));
     const arrivalMean = mean(this.arrivals);
@@ -419,9 +507,10 @@ export class NetGame {
       correctionMaxPx: Math.max(0, ...this.corrections),
       interpolationDelayMs: this.interpolationDelayMs,
       bufferSnapshots: this.buffer.snaps.length,
-      aheadTicks: this.clock.ready && this.buffer.latest
-        ? this.clock.serverTickAt(this.now()) - this.buffer.latest.tick
-        : 0,
+      aheadTicks:
+        this.clock.ready && this.buffer.latest
+          ? this.clock.serverTickAt(this.now()) - this.buffer.latest.tick
+          : 0,
       arrivals: this.arrivals,
       corrections: this.corrections,
       predict: this.options.predict,
@@ -435,7 +524,11 @@ export class NetGame {
       // Увімкнули передбачення на льоту: стартуємо зі стану сервера.
       this.predictor.state = null;
       this.predictor.pending = [];
-      if (this.ownRecord) this.predictor.reconcile(this.ownRecord, this.predictor.nextSeq - 1);
+      if (this.ownRecord)
+        this.predictor.reconcile(
+          this.ownRecord,
+          seqNo(this.predictor.nextSeq - 1),
+        );
     }
   }
 }

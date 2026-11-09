@@ -1,5 +1,5 @@
-import { createWriteStream, mkdirSync } from "node:fs";
 import { on } from "node:events";
+import { createWriteStream, mkdirSync } from "node:fs";
 import path from "node:path";
 import { Readable, Transform, type TransformCallback } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -13,7 +13,11 @@ export class NdjsonTransform extends Transform {
     super({ writableObjectMode: true, readableObjectMode: false });
   }
 
-  override _transform(event: unknown, _encoding: BufferEncoding, callback: TransformCallback): void {
+  override _transform(
+    event: unknown,
+    _encoding: BufferEncoding,
+    callback: TransformCallback,
+  ): void {
     try {
       callback(null, `${JSON.stringify(event)}\n`);
     } catch (error: unknown) {
@@ -22,7 +26,9 @@ export class NdjsonTransform extends Transform {
   }
 }
 
-async function* unwrap(events: AsyncIterable<unknown[]>): AsyncGenerator<unknown> {
+async function* unwrap(
+  events: AsyncIterable<unknown[]>,
+): AsyncGenerator<unknown> {
   // events.on() віддає масиви аргументів: [event]
   for await (const [event] of events) yield event;
 }
@@ -35,7 +41,11 @@ export class MatchLogs {
   readonly now: () => number;
   readonly #jobs = new Set<Promise<void>>();
 
-  constructor({ dir, log, now = Date.now }: { dir: string; log: Logger; now?: () => number }) {
+  constructor({
+    dir,
+    log,
+    now = Date.now,
+  }: { dir: string; log: Logger; now?: () => number }) {
     this.dir = dir;
     this.log = log;
     this.now = now;

@@ -3,7 +3,10 @@ import type { WorldEvents } from "@dogfight/shared/sim";
 type SoundName = "fire" | "hit" | "explode";
 
 // Запасні звуки, якщо ассет не завантажився: простий осцилятор.
-const FALLBACK_TONES: Record<SoundName, { freq: number; ms: number; type: OscillatorType }> = {
+const FALLBACK_TONES: Record<
+  SoundName,
+  { freq: number; ms: number; type: OscillatorType }
+> = {
   fire: { freq: 880, ms: 70, type: "square" },
   hit: { freq: 220, ms: 120, type: "sawtooth" },
   explode: { freq: 90, ms: 260, type: "sawtooth" },
@@ -20,7 +23,10 @@ const EVENT_TO_SOUND = {
 const isSoundName = (name: string): name is SoundName => name in FALLBACK_TONES;
 
 // Джерело подій, на які підписується аудіо (EventTarget із CustomEvent).
-export type EventSource = Pick<EventTarget, "addEventListener" | "removeEventListener">;
+export type EventSource = Pick<
+  EventTarget,
+  "addEventListener" | "removeEventListener"
+>;
 
 export class AudioManager {
   ctx: AudioContext | null = null;
@@ -31,7 +37,10 @@ export class AudioManager {
   unlock(): AudioContext {
     if (!this.ctx) {
       // Старі Safari мають лише webkitAudioContext (Reflect.get -> any, без приведення).
-      const legacy: typeof AudioContext | undefined = Reflect.get(window, "webkitAudioContext");
+      const legacy: typeof AudioContext | undefined = Reflect.get(
+        window,
+        "webkitAudioContext",
+      );
       const Ctx = window.AudioContext ?? legacy;
       if (!Ctx) throw new Error("AudioContext не підтримується");
       this.ctx = new Ctx();
@@ -61,7 +70,10 @@ export class AudioManager {
     if (isSoundName(name)) this.#beep(ctx, FALLBACK_TONES[name]);
   }
 
-  #beep(ctx: AudioContext, tone: { freq: number; ms: number; type: OscillatorType }): void {
+  #beep(
+    ctx: AudioContext,
+    tone: { freq: number; ms: number; type: OscillatorType },
+  ): void {
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = tone.type;

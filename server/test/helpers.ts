@@ -5,15 +5,16 @@ import path from "node:path";
 import { decodeBinary } from "@dogfight/shared/codec";
 import {
   type ClientMessage,
-  type ServerMessage,
   decodeServerJson,
+  type ServerMessage,
 } from "@dogfight/shared/protocol";
 import { type RawData, WebSocket } from "ws";
 import { type App, createApp } from "../src/app.ts";
 import { type Config, loadConfig } from "../src/config.ts";
 import { silentLogger } from "../src/logger.ts";
 
-export const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+export const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
 
 export function tempDir(prefix = "dogfight-"): string {
   return mkdtempSync(path.join(tmpdir(), prefix));
@@ -89,7 +90,9 @@ const toText = (data: RawData): string =>
 // Розбір кадру сервера в тестах: бінарні й JSON-кадри дають один тип.
 function decodeFrame(data: RawData, isBinary: boolean): ServerMessage {
   if (isBinary) {
-    const bytes = Array.isArray(data) ? Buffer.concat(data) : new Uint8Array(data);
+    const bytes = Array.isArray(data)
+      ? Buffer.concat(data)
+      : new Uint8Array(data);
     const msg = decodeBinary(bytes);
     if (msg.type === "input" || msg.type === "ping") {
       throw new Error(`сервер надіслав клієнтське повідомлення: ${msg.type}`);
@@ -97,7 +100,8 @@ function decodeFrame(data: RawData, isBinary: boolean): ServerMessage {
     return msg;
   }
   const msg = decodeServerJson(toText(data));
-  if (!msg) throw new Error(`сервер надіслав некоректне повідомлення: ${toText(data)}`);
+  if (!msg)
+    throw new Error(`сервер надіслав некоректне повідомлення: ${toText(data)}`);
   return msg;
 }
 
@@ -142,7 +146,9 @@ export function connect(url: string, options?: object): TestClient {
   ws.on("error", () => {}); // помилки тестового клієнта не мають валити тест
 
   const closed = new Promise<{ code: number; reason: string }>((resolve) => {
-    ws.on("close", (code: number, reason: Buffer) => resolve({ code, reason: reason.toString() }));
+    ws.on("close", (code: number, reason: Buffer) =>
+      resolve({ code, reason: reason.toString() }),
+    );
   });
 
   const opened = new Promise<void>((resolve, reject) => {
@@ -157,21 +163,24 @@ export function connect(url: string, options?: object): TestClient {
     opened,
     send: (msg) => ws.send(JSON.stringify({ v: 1, ...msg })),
     next<K extends ServerMessage["type"]>(type: K, timeoutMs = 1500) {
-      return new Promise<Extract<ServerMessage, { type: K }>>((resolve, reject) => {
-        const waiter: Waiter = {
-          type,
-          // Єдине місце звуження: waiter викликається лише для повідомлень цього type.
-          resolve: (msg) => resolve(msg as Extract<ServerMessage, { type: K }>),
-        };
-        waiters.push(waiter);
-        drain();
-        setTimeout(() => {
-          const index = waiters.indexOf(waiter);
-          if (index === -1) return;
-          waiters.splice(index, 1);
-          reject(new Error(`очікувалось повідомлення "${type}"`));
-        }, timeoutMs).unref();
-      });
+      return new Promise<Extract<ServerMessage, { type: K }>>(
+        (resolve, reject) => {
+          const waiter: Waiter = {
+            type,
+            // Єдине місце звуження: waiter викликається лише для повідомлень цього type.
+            resolve: (msg) =>
+              resolve(msg as Extract<ServerMessage, { type: K }>),
+          };
+          waiters.push(waiter);
+          drain();
+          setTimeout(() => {
+            const index = waiters.indexOf(waiter);
+            if (index === -1) return;
+            waiters.splice(index, 1);
+            reject(new Error(`очікувалось повідомлення "${type}"`));
+          }, timeoutMs).unref();
+        },
+      );
     },
   };
 }

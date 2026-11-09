@@ -23,7 +23,11 @@
 		"test:watch": "vitest",
 		"test:coverage": "vitest run --coverage",
 		"test:e2e": "playwright test",
-		"lint:biome": "biome check ."
+		"lint:biome": "biome check .",
+		"chaos:client-kill": "node scripts/chaos/chaos.mjs client-kill",
+		"chaos:flood": "node scripts/chaos/chaos.mjs flood",
+		"chaos:server-kill": "node scripts/chaos/chaos.mjs server-kill",
+		"docker:build": "docker build -t dogfight:local --build-arg GIT_SHA=local ."
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.5.14",

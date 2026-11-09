@@ -20,7 +20,8 @@ export function queryAll<T extends Element>(
   type: ElementClass<T>,
 ): T[] {
   return [...root.querySelectorAll(selector)].map((element) => {
-    if (!(element instanceof type)) throw new Error(`Елемент ${selector} має інший тип`);
+    if (!(element instanceof type))
+      throw new Error(`Елемент ${selector} має інший тип`);
     return element;
   });
 }

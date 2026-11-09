@@ -16,10 +16,20 @@ function startServer(env: Record<string, string> = {}) {
   const logDir = tempDir("proc-logs-");
   const child = spawn(
     process.execPath,
-    ["--experimental-strip-types", "--disable-warning=ExperimentalWarning", ENTRY],
+    [
+      "--experimental-strip-types",
+      "--disable-warning=ExperimentalWarning",
+      ENTRY,
+    ],
     {
-    env: { ...process.env, PORT: "0", HOST: "127.0.0.1", LOG_DIR: logDir, ...env },
-    stdio: ["ignore", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        PORT: "0",
+        HOST: "127.0.0.1",
+        LOG_DIR: logDir,
+        ...env,
+      },
+      stdio: ["ignore", "pipe", "pipe"],
     },
   );
   let out = "";
@@ -29,7 +39,10 @@ function startServer(env: Record<string, string> = {}) {
     child.on("exit", (code, signal) => resolve({ code, signal })),
   );
   const ready = new Promise<number>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`не стартував:\n${out}`)), 4000);
+    const timer = setTimeout(
+      () => reject(new Error(`не стартував:\n${out}`)),
+      4000,
+    );
     child.once("exit", () => clearTimeout(timer));
     child.stdout.on("data", () => {
       const match = /"port":(\d+)/.exec(out);
@@ -43,22 +56,38 @@ function startServer(env: Record<string, string> = {}) {
   return { child, ready, exited, logDir, output: () => out };
 }
 
-test("SIGTERM: коректне завершення з кодом 0 і логом", { skip: process.platform === "win32" }, async () => {
+test("SIGTERM: коректне завершення з кодом 0 і логом", {
+  skip: process.platform === "win32",
+}, async () => {
   const server = startServer();
   try {
     const port = await server.ready;
     await fetch(`http://127.0.0.1:${port}/health`);
+    const began = Date.now();
     server.child.kill("SIGTERM");
     const { code } = await server.exited;
     assert.equal(code, 0);
+    assert.ok(
+      Date.now() - began < 10_000,
+      "graceful shutdown вкладається в 10 с",
+    );
     assert.match(server.output(), /shutdown: complete/);
+    // Логи — JSON-рядки (pino): кожен рядок парситься й має level/msg/service.
+    for (const line of server.output().trim().split("\n")) {
+      const record = JSON.parse(line) as Record<string, unknown>;
+      assert.equal(record.service, "dogfight");
+      assert.equal(typeof record.level, "string");
+      assert.equal(typeof record.msg, "string");
+    }
   } finally {
     server.child.kill("SIGKILL");
     rmSync(server.logDir, { recursive: true, force: true });
   }
 });
 
-test("SIGINT теж завершує з кодом 0", { skip: process.platform === "win32" }, async () => {
+test("SIGINT теж завершує з кодом 0", {
+  skip: process.platform === "win32",
+}, async () => {
   const server = startServer();
   try {
     await server.ready;

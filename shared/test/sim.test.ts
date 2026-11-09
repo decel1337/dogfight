@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { test } from "vitest";
 import { DT, SHIP } from "../src/constants.ts";
 import { mulberry32 } from "../src/prng.ts";
@@ -8,14 +8,14 @@ import {
   Bullet,
   DAMAGE,
   HomingBehavior,
+  hashWorld,
+  type Integrate,
+  integrate,
+  lerpAngle,
   Pickup,
   Ship,
   Vector2,
   World,
-  hashWorld,
-  integrate,
-  lerpAngle,
-  type Integrate,
 } from "../src/sim/index.ts";
 import {
   advance,
@@ -79,7 +79,10 @@ test("інтерполяція кута йде найкоротшою дугою
 
 test("детермінізм: однаковий seed і input -> однаковий хеш", () => {
   assert.equal(hashWorld(runScenario(600)), hashWorld(runScenario(600)));
-  assert.notEqual(hashWorld(runScenario(600, 7)), hashWorld(runScenario(600, 8)));
+  assert.notEqual(
+    hashWorld(runScenario(600, 7)),
+    hashWorld(runScenario(600, 8)),
+  );
 });
 
 test("детермінізм: вихідний код sim/ не містить недетермінованих викликів", () => {
@@ -88,15 +91,24 @@ test("детермінізм: вихідний код sim/ не містить �
   const nodeImport = /from\s+["']node:/;
   const dirs = ["sim", "netcode", "codec", "protocol"];
   for (const dir of dirs) {
-    for (const file of readdirSync(new URL(`../src/${dir}/`, import.meta.url))) {
-      const source = readFileSync(new URL(`../src/${dir}/${file}`, import.meta.url), "utf8");
+    for (const file of readdirSync(
+      new URL(`../src/${dir}/`, import.meta.url),
+    )) {
+      const source = readFileSync(
+        new URL(`../src/${dir}/${file}`, import.meta.url),
+        "utf8",
+      );
       const code = source
         .split("\n")
         .filter((line) => !line.trim().startsWith("//"))
         .join("\n");
       assert.doesNotMatch(code, nodeImport, `${dir}/${file}: імпорт node:`);
       if (dir === "sim") {
-        assert.doesNotMatch(code, forbidden, `${dir}/${file}: недетермінований виклик`);
+        assert.doesNotMatch(
+          code,
+          forbidden,
+          `${dir}/${file}: недетермінований виклик`,
+        );
       }
     }
   }
@@ -108,7 +120,15 @@ test("якщо в integrate потрапляє Math.random() — стани ро
     const out = integrate(s, i, dt, a);
     return { ...out, x: out.x + (Math.random() - 0.5) * 0.2 };
   };
-  let clean = { x: 100, y: 100, vx: 0, vy: 0, angle: 0, cooldown: 0, rapid: false };
+  const clean = {
+    x: 100,
+    y: 100,
+    vx: 0,
+    vy: 0,
+    angle: 0,
+    cooldown: 0,
+    rapid: false,
+  };
   let a = clean;
   let b = clean;
   for (let i = 0; i < 100; i++) {
@@ -124,7 +144,10 @@ test("World: id призначає світ, ітератор, ofKind-генер
   const ship = world.spawn(new Ship(100, 100));
   const rock = world.spawn(new Asteroid(500, 500, 20, { rng: mulberry32(1) }));
   assert.deepEqual([ship.id, rock.id], [1, 2]);
-  assert.deepEqual([...world].map((e) => e.kind), ["ship", "asteroid"]);
+  assert.deepEqual(
+    [...world].map((e) => e.kind),
+    ["ship", "asteroid"],
+  );
   assert.deepEqual([...world.ofKind("asteroid")], [rock]);
 
   world.despawn(rock.id);
@@ -160,7 +183,10 @@ test("Ship: input рухає корабель, постріл успадкову
   const fired = [];
   world.on("fired", (e) => fired.push(e));
 
-  const bullet = ship.applyInput({ thrust: 0, turn: 0, fire: 1, seq: 9 }, world);
+  const bullet = ship.applyInput(
+    { thrust: 0, turn: 0, fire: 1, seq: 9 },
+    world,
+  );
   assert.ok(bullet instanceof Bullet);
   assert.equal(bullet.tag, 9);
   assert.equal(bullet.ownerId, ship.id);
@@ -194,7 +220,11 @@ test("Ship: смерть, вибух, респавн через 2 с у безп
   assert.equal(ship.dead, false);
   assert.equal(ship.hp, SHIP.maxHp);
   assert.ok(ship.invulnerableTicks > 0);
-  assert.equal(ship.takeDamage(world), DAMAGE.none, "невразливий після респавну");
+  assert.equal(
+    ship.takeDamage(world),
+    DAMAGE.none,
+    "невразливий після респавну",
+  );
 });
 
 test("Колізії: куля збиває астероїд і додає очки власнику", () => {
@@ -215,19 +245,25 @@ test("Колізії: куля влучає в ЧУЖИЙ корабель, у �
   const world = new World();
   const shooter = world.spawn(new Ship(100, 100));
   const target = world.spawn(new Ship(500, 500));
-  world.spawn(new Bullet(100, 100, new Vector2(0, 0), 0, { ownerId: shooter.id }));
+  world.spawn(
+    new Bullet(100, 100, new Vector2(0, 0), 0, { ownerId: shooter.id }),
+  );
   world.step();
   assert.equal(shooter.hp, SHIP.maxHp, "у себе не влучаємо");
   assert.equal(world.size, 3, "власна куля жива");
 
-  const b = world.spawn(new Bullet(500, 500, new Vector2(0, 0), 0, { ownerId: shooter.id }));
+  const b = world.spawn(
+    new Bullet(500, 500, new Vector2(0, 0), 0, { ownerId: shooter.id }),
+  );
   world.step();
   assert.equal(target.hp, SHIP.maxHp - 1);
   assert.equal(world.get(b.id), undefined);
 
   target.invulnerableTicks = 0;
   target.takeDamage(world);
-  world.spawn(new Bullet(500, 500, new Vector2(0, 0), 0, { ownerId: shooter.id }));
+  world.spawn(
+    new Bullet(500, 500, new Vector2(0, 0), 0, { ownerId: shooter.id }),
+  );
   world.step();
   assert.equal(target.dead, true);
   assert.equal(shooter.score, 250);
@@ -341,7 +377,10 @@ test("dmath: збігається з Math.* з точністю 1e-9 і лиша
   }
   for (let y = -5; y <= 5; y += 0.37) {
     for (let x = -5; x <= 5; x += 0.41) {
-      assert.ok(Math.abs(dAtan2(y, x) - Math.atan2(y, x)) < 1e-9, `atan2 ${y},${x}`);
+      assert.ok(
+        Math.abs(dAtan2(y, x) - Math.atan2(y, x)) < 1e-9,
+        `atan2 ${y},${x}`,
+      );
     }
   }
   assert.equal(dAtan2(0, 0), 0);

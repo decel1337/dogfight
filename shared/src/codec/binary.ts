@@ -58,8 +58,6 @@
 // нульові зарезервовані біти. Некоректний кадр — CodecError, а не «якось
 // розібране» повідомлення з числами поза діапазоном.
 
-import { assertNever, entityId } from "../types.ts";
-import type { KindCode } from "../sim/entity.ts";
 import type {
   EventsMessage,
   GameEvent,
@@ -69,10 +67,18 @@ import type {
   PongMessage,
   SnapshotMessage,
 } from "../protocol/index.ts";
+import type { KindCode } from "../sim/entity.ts";
+import { assertNever, entityId, type SeqNo, seqNo, tick } from "../types.ts";
 
 export const FORMAT_VERSION = 1;
 
-export const MSG = { INPUT: 1, PING: 2, SNAPSHOT: 3, EVENTS: 4, PONG: 5 } as const;
+export const MSG = {
+  INPUT: 1,
+  PING: 2,
+  SNAPSHOT: 3,
+  EVENTS: 4,
+  PONG: 5,
+} as const;
 
 export const RECORD_SIZE = 26;
 export const SNAPSHOT_HEADER = 11;
@@ -111,7 +117,9 @@ export function encodeInput(msg: InputMessage): Uint8Array<ArrayBuffer> {
   return out;
 }
 
-export function encodePing(msg: Pick<PingMessage, "t">): Uint8Array<ArrayBuffer> {
+export function encodePing(
+  msg: Pick<PingMessage, "t">,
+): Uint8Array<ArrayBuffer> {
   const out = new Uint8Array(5);
   const v = new DataView(out.buffer);
   v.setUint8(0, header(MSG.PING));
@@ -149,9 +157,12 @@ export function encodeSnapshot(msg: SnapshotMessage): Uint8Array<ArrayBuffer> {
 // Снапшот для всіх гравців однаковий, окрім поля ack (байти 5..8). Тому
 // сервер кодує тіло ОДИН раз за тик, а для кожного клієнта лише копіює буфер
 // (memcpy) і дописує його ack — замість O(N·записів) викликів DataView.
-export function withAck(frame: Uint8Array<ArrayBuffer>, ack: number): Uint8Array<ArrayBuffer> {
+export function withAck(
+  frame: Uint8Array<ArrayBuffer>,
+  ack: SeqNo,
+): Uint8Array<ArrayBuffer> {
   const out = frame.slice();
-  new DataView(out.buffer).setUint32(5, ack >>> 0, true);
+  new DataView(out.buffer).setUint32(5, ack, true);
   return out;
 }
 
@@ -249,8 +260,8 @@ export function decodeBinary(data: ArrayBuffer | Uint8Array): GameMessage {
       if (packed >> 5 !== 0) throw new CodecError("input: зарезервовані біти");
       return {
         type: "input",
-        tick: v.getUint32(1, true),
-        seq: v.getUint32(5, true),
+        tick: tick(v.getUint32(1, true)),
+        seq: seqNo(v.getUint32(5, true)),
         thrust: (packed & 1) === 1 ? 1 : 0,
         turn: turnOf((packed >> 1) & 3),
         fire: fireOf((packed >> 3) & 3),
@@ -284,8 +295,8 @@ export function decodeBinary(data: ArrayBuffer | Uint8Array): GameMessage {
       }
       return {
         type: "snapshot",
-        tick: v.getUint32(1, true),
-        ack: v.getUint32(5, true),
+        tick: tick(v.getUint32(1, true)),
+        ack: seqNo(v.getUint32(5, true)),
         entities,
       };
     }
@@ -304,13 +315,13 @@ export function decodeBinary(data: ArrayBuffer | Uint8Array): GameMessage {
         });
         o += EVENT_SIZE;
       }
-      return { type: "events", tick: v.getUint32(1, true), events };
+      return { type: "events", tick: tick(v.getUint32(1, true)), events };
     }
     case MSG.PONG:
       expectLength(length, 9, "pong");
       return {
         type: "pong",
-        tick: v.getUint32(1, true),
+        tick: tick(v.getUint32(1, true)),
         t: v.getUint32(5, true),
       };
     default:

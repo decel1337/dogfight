@@ -73,7 +73,8 @@ export interface ConnectionOptions {
 // Розмір кадру в байтах (для статистики): рядок — у символах.
 function frameSize(data: unknown): number {
   if (typeof data === "string") return data.length;
-  if (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) return data.byteLength;
+  if (data instanceof ArrayBuffer || ArrayBuffer.isView(data))
+    return data.byteLength;
   return 0;
 }
 
@@ -105,7 +106,12 @@ export function createConnection({
   let retryTimer: TimerHandle | null = null;
   let intentionalClose = false;
   // Лічильники для netgraph (байти — корисне навантаження кадрів).
-  const stats: ConnectionStats = { bytesIn: 0, bytesOut: 0, messagesIn: 0, messagesOut: 0 };
+  const stats: ConnectionStats = {
+    bytesIn: 0,
+    bytesOut: 0,
+    messagesIn: 0,
+    messagesOut: 0,
+  };
 
   // Диспетчеризація повідомлення сервера: вичерпний switch за type, тож новий
   // варіант ServerMessage без обробки тут не скомпілюється.
@@ -119,6 +125,8 @@ export function createConnection({
         return events.emit("chat", msg);
       case "error":
         return events.emit("error", msg);
+      case "shutdown":
+        return events.emit("shutdown", msg);
       case "snapshot":
         return events.emit("snapshot", msg);
       case "events":
@@ -163,7 +171,11 @@ export function createConnection({
     ws.onclose = (event) => {
       socket = null;
       const willRetry = !intentionalClose && !FATAL_CLOSE_CODES.has(event.code);
-      events.emit("close", { code: event.code, reason: event.reason, willRetry });
+      events.emit("close", {
+        code: event.code,
+        reason: event.reason,
+        willRetry,
+      });
       if (willRetry) scheduleReconnect();
     };
   }
@@ -171,7 +183,10 @@ export function createConnection({
   // Експоненційний backoff із повним jitter, щоб після падіння сервера
   // тисячі клієнтів не стукали одночасно.
   function scheduleReconnect(): void {
-    const ceiling = Math.min(backoff.maxMs, backoff.baseMs * backoff.factor ** attempt);
+    const ceiling = Math.min(
+      backoff.maxMs,
+      backoff.baseMs * backoff.factor ** attempt,
+    );
     const delayMs = Math.round(random() * ceiling);
     attempt++;
     events.emit("reconnecting", { attempt, delayMs });
@@ -191,7 +206,10 @@ export function createConnection({
     // critical (join, chat): ставимо в чергу, якщо з'єднання немає.
     // не critical (часті оновлення): при затору або розриві просто пропускаємо —
     // наступне оновлення все одно актуальніше.
-    send(message: ClientMessage, { critical = true }: { critical?: boolean } = {}): boolean {
+    send(
+      message: ClientMessage,
+      { critical = true }: { critical?: boolean } = {},
+    ): boolean {
       const data = encode(message);
       if (socket?.readyState === READY.OPEN) {
         stats.bytesOut += data.length;

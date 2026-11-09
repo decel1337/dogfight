@@ -1,26 +1,115 @@
-# Dogfight — Labs 01–07
+# Dogfight — багатокористувацький літаковий бій у браузері
 
 ![CI](https://github.com/decel1337/dogfight/actions/workflows/ci.yml/badge.svg)
+![Release](https://github.com/decel1337/dogfight/actions/workflows/release.yml/badge.svg)
 
 ![Два вікна: ліве з RTT 200 мс і джитером 40 мс (із передбаченням), праве — локальне](docs/demo.gif)
 
-*Два клієнти в одній кімнаті: ліворуч — з імітацією RTT 200 мс ± 40 мс, праворуч — без затримки. Власний корабель відгукується одразу (передбачення), чужі плавні (інтерполяція).*
+*Два клієнти в одній кімнаті: ліворуч — з імітацією RTT 200 мс ± 40 мс, праворуч — без затримки. Власний корабель відгукується одразу (передбачення), чужі — плавні (інтерполяція).*
 
-Мультиплеєрна арена: клієнт на Canvas (Labs 01–03), сервер на Node.js з кімнатами, чатом і логами матчів (Lab 04), авторитетний сервер з передбаченням, реконсиляцією та інтерполяцією на клієнті (Lab 05), увесь код — на суворому TypeScript (Lab 06), **тести, e2e, CI і профілювання (Lab 07)**. Репозиторій — npm workspaces: `shared/`, `client/`, `server/`.
+> **Грати:** `https://<ЗАСТОСУНОК>.fly.dev` — _посилання з'явиться після першого деплою (див. [docs/DEPLOY.md](docs/DEPLOY.md))_
+> **Відео-демо:** _додати посилання_ · **Статус:** _додати посилання на uptime-монітор_
 
-## Запуск
+Аркадна арена на 2–8 пілотів: літаєш, стріляєш, чатишся в кімнаті. Сервер **авторитетний** (30 Гц), клієнт **передбачає** власний рух і **інтерполює** чужий, тож гра відчувається миттєвою навіть при RTT 200–400 мс. Увесь код — суворий TypeScript, спільна детермінована симуляція для клієнта й сервера, бінарний протокол (в 4× менший за JSON).
+
+## Як грати
+
+1. Відкрийте посилання, клікніть по екрану, створіть кімнату (**CREATE ROOM**) або приєднайтесь до існуючої (**JOIN**).
+2. `W/↑` — тяга, `A/D` або `←/→` — поворот, `Space` або клік — постріл, `H` — самонавідна куля, `Enter` — чат, `F3` — netgraph.
+3. Покличте друга в ту саму кімнату. Гра встановлюється як застосунок (PWA): «Додати на головний екран» / «Встановити».
+
+## Запустити локально (3 команди)
+
+```bash
+npm install
+npm run build
+npm start          # http://127.0.0.1:3000
+```
+
+Або в контейнері: `docker compose up --build` → http://localhost:3000.
+
+## Архітектура
+
+```mermaid
+flowchart LR
+  subgraph Browser
+    I[Input 30 Гц] --> P[Predictor<br/>передбачення + реконсиляція]
+    S[SnapshotBuffer<br/>інтерполяція] --> R[Canvas render 60 fps]
+    P --> R
+  end
+  subgraph "Server (Node 22, 1 процес)"
+    W[ws: Origin + ліміт IP<br/>rate limit, heartbeat] --> M[Match: авторитетний світ<br/>тикер 30 Гц]
+    M --> E[Бінарний snapshot<br/>кодується 1 раз за тик]
+    M --> L[NDJSON-лог матчу]
+    H["/health /ready /metrics"]
+  end
+  Browser -- "input (10 байт)" --> W
+  E -- "snapshot ≈ 740 Б" --> Browser
+  Proxy[(TLS / wss<br/>Fly proxy)] --- W
+  Mon[Uptime monitor] --> H
+```
+
+Спільний пакет `shared/` (симуляція, протокол на zod, кодеки, netcode) імпортують і клієнт, і сервер — розбіжність логіки фізично неможлива. Деталі — у розділах Labs 04–07 нижче.
+
+## Вимірювання (зведено)
+
+| Що | Результат | Джерело |
+|---|---|---|
+| Відгук власного корабля при RTT 200 мс | 59 мс з передбаченням проти 326 мс без | Lab 05 M1 |
+| Розмір снапшота (28 сутностей) | 739 Б бінарний проти 2968 Б JSON (×4.0) | Lab 05 M3 |
+| Поправка реконсиляції (спільний integrate) | 0.001 px середня; з `Math.random` — 0.56 px | Lab 05 M2 |
+| Кадр клієнта (`frame`) p99 | 1.4 мс (бюджет 16.7) | Lab 07 M3 |
+| Серверний tick p99, 256 клієнтів в одній кімнаті | 14.8 мс (бюджет 33.3), ELU 0.34 | Lab 07 M4 |
+| Пам'ять сервера, 256 клієнтів | RSS 163 МБ | Lab 07 M4 |
+| Chaos: 1000 сміттєвих повід./с | tick p99 0.7 мс, здорові гравці без змін | Lab 08 M2 |
+| Graceful shutdown (SIGTERM, 1 клієнт) | код 0 за ≈0.5 с, клієнт отримує `shutdown` + close 1001 | Lab 08 M1 |
+
+![Ємність: tick p99 від N](perf/capacity.svg)
+
+### Реальна мережа (два гравці на різних мережах)
+
+_Заповнюється після живого тесту (див. [docs/LAUNCH.md](docs/LAUNCH.md)); вигадані цифри сюди не вносяться._
+
+| Гравець | Мережа | RTT (netgraph) | Втрати | Примітки |
+|---|---|---|---|---|
+| _…_ | _…_ | _…_ | _…_ | _…_ |
+
+## Відомі обмеження (і чому)
+
+- **Один процес = одна кімната-симуляція на ядро.** Стан матчу живе в пам'яті; горизонтальне масштабування потребує розподілу кімнат по інстансах (sticky за room id) — не робив, бо виміряна межа (≈900 клієнтів по 8 в кімнаті на ядро) далеко за потребами проєкту.
+- **Рестарт = втрата кімнат.** Деплой або падіння скидає всі матчі; клієнти бачать повідомлення й повертаються в лобі. Реплеї на диску (`/data`) лишаються.
+- **Ботів і netsim не вимкнено в проді за замовчуванням** (`ENABLE_NETSIM=1`): це частина демонстрації; для публічного сервера ставте `ENABLE_NETSIM=0`.
+- **Origin-перевірка захищає браузерних гравців**, а не автентифікує: не-браузерний клієнт може підробити заголовок. Облікових записів немає.
+- **Загублений `input` не дублюється** (немає надлишкової відправки): наслідок — короткий «ривок» реконсиляції при втратах пакетів.
+- **Не вимірювалось у реальному клауді:** продуктивність на `shared-cpu-1x`, RTT між справжніми гравцями — це у чеклисті [docs/LAUNCH.md](docs/LAUNCH.md).
+
+## Що далі (What I'd do next)
+
+1. Дельта-снапшоти й area-of-interest: вивід (`writev`) — головна стаття вартості, O(N²) у кімнаті.
+2. Надлишкова відправка `input` (2–3 останні в кадрі) проти втрат пакетів.
+3. Шардінг кімнат між інстансами (sticky за room id) і метрика «кімнат на інстанс» для автомасштабування.
+4. Sentry/подібне для помилок і алерти по `dogfight_tick_work_p99_ms`.
+5. Акаунти й справжня автентифікація замість лише Origin.
+
+## Теги
+
+`lab-01` … `lab-07` — здані лаби · `lab-08` — «Ship It» · `v1.0.0` — публічний реліз (тег запускає [release.yml](.github/workflows/release.yml)).
+
+---
+
+## Розробка: команди, скрипти, структура
 
 ```bash
 nvm use                  # Node 22 (.nvmrc)
 npm install              # ставить усі workspace-и (shared + client + server)
-cp server/.env.example server/.env    # за потреби змінити порт/ліміти
+cp .env.example .env    # за потреби (порт, ліміти, LOG_LEVEL, ALLOWED_ORIGINS...)
 
 npm run dev:server       # Node-сервер: http://127.0.0.1:3000
 npm run dev:client       # Vite: http://localhost:5173 (проксі /api і /ws на :3000)
 
 npm run build && npm start   # production: Node віддає зібраний client/dist
 npm run typecheck        # tsc --noEmit у shared, server, client (strict)
-npm test                 # Vitest з кореня: ≈220 тестів, 11+ fast-check властивостей
+npm test                 # Vitest з кореня: ≈240 тестів, 11+ fast-check властивостей
 npm run test:coverage    # те саме + покриття shared/src (поріг 85%)
 npm run test:e2e         # Playwright: два браузерні контексти (спершу `npx playwright install chromium`)
 npm run lint             # ESLint з типами (no-floating-promises) + Biome
@@ -50,6 +139,7 @@ node --experimental-strip-types shared/scripts/ts-prove-it.mjs  # Lab 06: що T
 node --experimental-strip-types scripts/perf/loadtest.mjs       # Lab 07: навантаження N клієнтів
 node --experimental-strip-types scripts/perf/client-profile.mjs --static client/dist --label run   # Lab 07: профіль клієнта
 node --allow-natives-syntax scripts/perf/prove-it-7.mjs         # Lab 07: V8/typed arrays/transfer
+node scripts/chaos/chaos.mjs client-kill|flood|server-kill      # Lab 08: chaos-перевірки (локально або --target URL)
 ```
 
 ## Структура
@@ -76,7 +166,10 @@ client/                  Vite-застосунок (Labs 01–03 + мережа 
   vite.config.ts         проксі /api і /ws на Node-сервер
 server/
   src/index.ts           запуск, graceful shutdown, фатальні помилки
-  src/config.ts          PORT, HOST, LOG_DIR... з env, валідація
+  src/config.ts          усі env-змінні в одній zod-схемі (PORT, LOG_LEVEL, ALLOWED_ORIGINS...)
+  src/logger.ts          pino: JSON-логи в stdout, child-логери (socket/roomId/playerId)
+  src/metrics.ts         prom-client: /metrics (гравці, кімнати, повідомлення, tick p99, ELU, відхилення)
+  src/security.ts        перевірка Origin, IP клієнта (TRUST_PROXY), ліміт з'єднань на IP
   src/app.ts             node:http: API, статика, стрімінг реплеїв
   src/static.ts          MIME, захист від path traversal
   src/rooms.ts           Room extends EventEmitter, RoomManager
@@ -91,6 +184,7 @@ docs/                    rss-backpressure.svg / .csv
 ```
 
 ---
+
 
 # Lab 01 — The Event Loop Is the Game Loop
 
@@ -602,16 +696,18 @@ export type ClientMessage = z.infer<typeof ClientMessageSchema>;
 
 ## Три цікаві типи
 
-**1. Брендовані ідентифікатори** (`shared/src/types.ts`): `EntityId` і `PlayerId` у JS — однакові числа, у TS — різні типи.
+**1. Брендовані ідентифікатори** (`shared/src/types.ts`): `EntityId`, `PlayerId`, **`Tick`** (номер кроку) і **`SeqNo`** (порядковий номер input-у та `ack`) у JS — однакові числа, у TS — різні типи.
 
 ```ts
 declare const brand: unique symbol;
 export type Brand<T, B extends string> = T & { readonly [brand]: B };
 export type EntityId = Brand<number, "EntityId">;
 export type PlayerId = Brand<number, "PlayerId">;
+export type Tick = Brand<number, "Tick">;
+export type SeqNo = Brand<number, "SeqNo">;
 ```
 
-Передати `PlayerId` туди, де чекають `EntityId`, не вдасться; єдине місце, де число «стає» брендованим, — `brandNumber` (одне приведення), усі конструктори (`entityId(n)`, `playerId(n)`) ще й перевіряють діапазон u16. У рантаймі це просто число.
+Передати `PlayerId` туди, де чекають `EntityId`, або `ack` (`SeqNo`) туди, де чекають `Tick`, не вдасться; єдине місце, де число «стає» брендованим, — `brandNumber` (одне приведення), усі конструктори (`entityId(n)`, `playerId(n)`, `tick(n)`, `seqNo(n)`) ще й перевіряють діапазон (u16 або u32). У схемах zod `tick`/`seq`/`ack` — це `u32.transform(tick)` / `u32.transform(seqNo)`, тож розібране з мережі повідомлення вже має брендовані типи, а бінарний декодер обгортає читання з `DataView` тими самими конструкторами. У рантаймі це просто число.
 
 **2. `EntityOf<K>` і типобезпечна таблиця зіткнень.** `AnyEntity` — дискримінований union за `kind`; `EntityOf<K>` = `Extract<AnyEntity, { kind: K }>`. Тоді таблиця правил зіткнень перевіряється компілятором:
 
@@ -684,10 +780,10 @@ export type ConnectionEvents = ServerEvents & { open: undefined; close: CloseInf
 
 | | |
 |---|---|
-| M1 | Vitest з кореня (`vitest.config.ts`, projects shared/server/client), ≈219 тестів, fast-check, fake timers (ticker, heartbeat), реконсиляція як чиста функція, rate limiter, tunneling куль, покриття shared ≈98% рядків / 88% гілок |
+| M1 | Vitest з кореня (`vitest.config.ts`, projects shared/server/client), ≈223 тестів, fast-check, fake timers (ticker, heartbeat), реконсиляція як чиста функція, rate limiter, tunneling куль, покриття shared ≈98% рядків / 88% гілок |
 | M2 | Playwright: два контексти (склад, рух між клієнтами < 500 мс, чат, вихід), GitHub Actions (`ci.yml`: typecheck → lint → coverage → build → окремий job e2e), бейдж, ESLint з типами (`no-floating-promises`, `no-misused-promises`, `await-thenable`, `only-throw-error`) |
 | M3 | `performance.mark/measure` (`?perf=1`), 30 с сесія з 8 ботами та інтенсивною стрільбою, GC із CDP-трасування, алокатори, self-time, flame-діаграми; серверний `--cpu-prof` |
-| M4 | Боти на сервері (той самий `receiveInput`), `POST/DELETE /api/rooms/:id/bots`, load-test N=8…256, worker-експеримент |
+| M4 | Боти на сервері (той самий `receiveInput`), `POST/DELETE /api/rooms/:id/bots`, load-test N=8…256, Web Worker-експеримент у Chromium (+ `worker_threads` на сервері) |
 
 Тести, що підтверджують ключові вимоги: `shared/test/properties.test.ts` (fast-check), `physics.test.ts` (tunneling), `reconcile.test.ts`, `server/test/fake-timers.test.ts`, `ratelimit*.test.ts`, `client/tests/loop.test.ts`, `server/test/bots.test.ts`, `e2e/two-players.spec.ts`.
 
@@ -700,37 +796,39 @@ export type ConnectionEvents = ServerEvents & { open: undefined; close: CloseInf
 | Метрика (чистий прогін) | До | Після |
 |---|---|---|
 | rAF-інтервал p50 / p95 / p99 | 16.7 / 16.7 / 16.8 мс | 16.7 / 16.8 / 16.8 мс |
-| **Major GC** (кількість / сумарна пауза / макс.) | **6 / 26.5 мс / 8.6 мс** | **0 / 0 / 0** |
+| **Major GC** (кількість / сумарна пауза / макс.), прогін 1 | **6 / 26.5 мс / 8.6 мс** | **0 / 0 / 0** |
+| Major GC, повторний чистий прогін | — | 2 / 13.5 мс / 8.3 мс |
 | Minor GC (кількість / сумарно / макс.) | 11 / 22.0 мс / 2.9 мс | 29 / 35.5 мс / 2.8 мс |
 
 | User Timing (прогін із профайлером), p50 / p95 / p99, мс | До | Після |
 |---|---|---|
-| `frame` | 0.4 / 1.3 / 2.0 | 0.3 / 1.1 / 1.7 |
-| `scene` | 0.1 / 0.4 / 1.4 | 0.1 / 0.3 / 1.3 |
-| `draw` | 0.3 / 0.5 / 1.6 | 0.2 / 0.4 / 1.3 |
-| `step` / `snapshot` | 0.1 / 1.1 / 1.4 · 0.1 / 0.2 / 0.3 | 0.2 / 0.8 / 1.5 · 0.1 / 0.2 / 0.3 |
+| `frame` | 0.4 / 1.3 / 2.0 | 0.3 / 0.6 / 1.4 |
+| `scene` | 0.1 / 0.4 / 1.4 | 0.1 / 0.3 / 1.1 |
+| `draw` | 0.3 / 0.5 / 1.6 | 0.2 / 0.3 / 0.9 |
+| `step` / `snapshot` | 0.1 / 1.1 / 1.4 · 0.1 / 0.2 / 0.3 | 0.1 / 0.8 / 1.3 · 0.1 / 0.2 / 0.2 |
 
-Алокатори (sampling heap profiler з урахуванням зібраних об'єктів, всього 47.9 МБ → 32.1 МБ за 30 с):
+Алокатори (sampling heap profiler з урахуванням зібраних об'єктів, всього 47.9 МБ → 33.0 МБ за 30 с):
 
 | До | КБ | % | Після | КБ | % |
 |---|---|---|---|---|---|
-| `SnapshotBuffer.sample` | 15598 | 32.5 | `sampleInto` | 4116 | 12.8 |
-| `decodeBinary` | 4032 | 8.4 | `decodeBinary` | 3819 | 11.9 |
-| `NetGame.scene` | 3098 | 6.5 | `NetGame.scene` | 3341 | 10.4 |
-| `drawScene` | 2959 | 6.2 | `DataView.getFloat32` | 2186 | 6.8 |
-| `DataView.getFloat32` | 2371 | 4.9 | `drawScene` | 1992 | 6.2 |
+| `SnapshotBuffer.sample` | 15598 | 32.5 | `sampleInto` | 4421 | 13.4 |
+| `decodeBinary` | 4032 | 8.4 | `decodeBinary` | 4059 | 12.3 |
+| `NetGame.scene` | 3098 | 6.5 | `NetGame.scene` | 3543 | 10.7 |
+| `drawScene` | 2959 | 6.2 | `DataView.getFloat32` | 2353 | 7.1 |
+| `DataView.getFloat32` | 2371 | 4.9 | `drawScene` | 2078 | 6.3 |
 
 Топ self-time: `(program)` ≈ 22% (браузер/композитор), далі `save`, `send`, `fillText` — менше 0.5% кожна; JS-функції гри не є вузьким місцем (див. flame-діаграми).
 
-**Чесна інтерпретація.** rAF p99 = 16.8 мс — це vsync 60 Гц, а не наша робота: сам кадр (`frame`) коштує ≈ 1–2 мс p99, тобто ціль «p99 < 16.7 мс» за **роботою кадру** виконана з 8-кратним запасом; сам інтервал не може бути меншим за період дисплея. Поодинокі піки 33–50 мс (макс.) трапляються й до, і після — це headless-середовище з програмним рендерингом, не з нашого коду. Ціль «нуль major GC» виконана (0 у чистому прогоні). У прогоні з профайлерами лишилось 3 major GC — самі профайлери (особливо heap sampling) їх провокують; тому числа GC беру з чистого прогону. Minor GC побільшало (11→29) при меншому обсязі алокацій: після зникнення major GC V8 не збільшує new space, тож scavenge частіші, але короткі (макс. 2.8 мс).
+**Чесна інтерпретація.** rAF p99 = 16.8 мс — це vsync 60 Гц, а не наша робота: сам кадр (`frame`) коштує ≈ 1–2 мс p99, тобто ціль «p99 < 16.7 мс» за **роботою кадру** виконана з 8-кратним запасом; сам інтервал не може бути меншим за період дисплея. Поодинокі піки 33–50 мс (макс.) трапляються й до, і після — це headless-середовище з програмним рендерингом, не з нашого коду. Ціль «нуль major GC» виконана **не в кожному прогоні**: з трьох чистих прогонів «після» — 0, 0 і 2 major GC (13.5 мс сумарно, макс. 8.3 мс) проти 6–8 до змін. Major GC майже зникли, але гарантувати «нуль» у headless-середовищі я не можу. У прогоні з профайлерами лишилось 3 major GC — самі профайлери (особливо heap sampling) їх провокують; тому числа GC беру з чистого прогону. Minor GC побільшало (11→29) при меншому обсязі алокацій: після зникнення major GC V8 не збільшує new space, тож scavenge частіші, але короткі (макс. 2.8 мс).
 
 ### Що виправлено (у порядку, який диктують виміри)
 
 1. **Major GC не від JS-купи.** У трасуванні `V8.GCIncrementalMarkingStart` мав `reason: "approaching global allocation limit"`, `old_gen_consumed ≈ 3.8 МБ` із 33 МБ — тобто тиснула не JS-купа, а «глобальна» (зовнішня) пам'ять. Експеримент: без ботів і стрільби major GC майже зникали; пакетне малювання куль (один `beginPath` + один `fill` на колір замість `save/translate/arc/fill/restore` на кулю) прибрало їх повністю. Висновок: буфер записаних команд canvas рахується як зовнішня пам'ять. Помилкова гіпотеза, яку я перевірив і відкинув: звук пострілів (`createBufferSource` на кожен постріл) — обмеження частоти нічого не змінило, тому я його відкотив.
 2. **`SnapshotBuffer.sample` (32% алокацій):** `sampleInto` + пул записів (`SampleScratch`) — нуль об'єктів на кадр у сталому режимі; `sample()` лишився обгорткою для тестів, поведінку підтверджує тест еквівалентності.
 3. **Час життя об'єктів проти покоління GC.** Буфер тримав 64 снапшоти (≈2 с); записи переживали два scavenge, потрапляли в old space й накопичувались до major GC. Тепер 12 (≈0.4 с) — менше за інтервал між scavenge. Так само `ServerClock` зберігав масив об'єктів `{at, value}` — замінено кільцем із двох `Float64Array`.
-4. **Алокації на кадр у `NetGame.scene`/`draw`:** повторно використовувані `Scene`/`me`/масиви/пул куль, `renderStateInto`, компактування ефектів і подій на місці (без `filter`/`rest`-масивів), кеш рядків HUD за значеннями, спільний `view`-об'єкт замість повернення нового. Усе це вже виключено з топу, але не зникло з нього повністю (`scene` ≈ 3 МБ — залишок дробових чисел та `Map`).
-5. **Що залишилось:** `decodeBinary` + `getFloat32` (≈ 18% алокацій): кожен снапшот створює записи, які мусять жити для інтерполяції. Наступний крок — SoA у `Float32Array` (розріз у бенчмарку нижче: ×1.8–2.2). Не робив: це переписує протокол/інтерполятор, а ціль уже досягнуто. Мегаморфних місць у гарячому шляху не знайшов (усі записи створюються з однієї форми — див. експеримент 1).
+4. **Пули для куль і частинок** (вимога лаби): `Pool<T>` (`shared/src/pool.ts`), `Bullet.acquire/release` (світ повертає мертву кулю в пул у кінці `step`; `Bullet.reset` відновлює стан, ідентичний конструктору — golden-хеш `3408780942` не змінився), пул `PredictedBullet` у `Predictor` (+ повторно використовувані `Map`/`Set` у `syncBullets`), пули вибухів (16 частинок наперед) та іскор у `NetGame`. Ціна пулу: об'єкт після `release` перевикористовується, тож тримати на нього посилання не можна (тести `pool.test.ts`).
+5. **Алокації на кадр у `NetGame.scene`/`draw`:** повторно використовувані `Scene`/`me`/масиви/пул куль, `renderStateInto`, компактування ефектів і подій на місці (без `filter`/`rest`-масивів), кеш рядків HUD за значеннями, спільний `view`-об'єкт замість повернення нового. Усе це вже виключено з топу, але не зникло з нього повністю (`scene` ≈ 3 МБ — залишок дробових чисел та `Map`).
+6. **Що залишилось:** `decodeBinary` + `getFloat32` (≈ 18% алокацій): кожен снапшот створює записи, які мусять жити для інтерполяції. Наступний крок — SoA у `Float32Array` (розріз у бенчмарку нижче: ×1.8–2.2). Не робив: це переписує протокол/інтерполятор, а ціль уже досягнуто. Мегаморфних місць у гарячому шляху не знайшов (усі записи створюються з однієї форми — див. експеримент 1).
 
 ## M3/M4. Сервер: профіль і ємність
 
@@ -745,7 +843,17 @@ export type ConnectionEvents = ServerEvents & { open: undefined; close: CloseInf
 
 Виправлення: **снапшот кодується раз за тик**, а для кожного клієнта копіюється буфер і дописується його `ack` (`withAck`, байти 5..8) — було O(N) повних кодувань. Просторовий хеш для колізій **не робив**: `findCollisions` лише 1.5% — не вузьке місце на N ≤ 256 (рішення за вимірюванням).
 
-**Worker-експеримент** (`node scripts/perf/worker-experiment.mjs 300`): кодування снапшоту на головному потоці — десятки мікросекунд; `postMessage(records[])` (structured clone) і навіть SoA-`Float64Array` з transfer не виграють по часу головного потоку, бо вартість — це підготовка/клон даних, а не кодування. **Рішення: no-go, у код не потрапило.**
+**Worker на сервері** (`node scripts/perf/worker-experiment.mjs 300`): кодування снапшоту на головному потоці — десятки мікросекунд; `postMessage(records[])` і навіть SoA-`Float64Array` з transfer не виграють. **No-go.**
+
+**Web Worker у браузері** (саме його просить лаба): `node scripts/perf/worker-browser-experiment.mjs 300 8` у Chromium міряє CPU головного потоку (CDP `TaskDuration`) при 30 снапшотах/с; у worker виноситься декодування бінарного снапшота.
+
+| Варіант | мкс/снапшот на головному потоці (60 → 300 сутностей, за вирахуванням бази) |
+|---|---|
+| A) декодування на головному (як є) | 13 → 65 |
+| B) worker повертає записи (structured clone) | 187 → 391 |
+| C) worker повертає `Float64Array` через transfer | 145 → 145 |
+
+**Рішення: no-go — Web Worker у застосунок не потрапив.** Головний потік з worker навантажений більше, ніж при декодуванні на місці: саме декодування (13–65 мкс) дешевше за обмін повідомленнями (≈145 мкс). Worker виграв би лише на значно важчій роботі.
 
 ### Навантажувальний тест (`node scripts/perf/loadtest.mjs --n 8,32,64,128,192,256`)
 
@@ -785,4 +893,89 @@ export type ConnectionEvents = ServerEvents & { open: undefined; close: CloseInf
 
 ## Чого не вистачає / що перевірити після `npm install`
 
-`npm run typecheck`, `npm test`, `npm run test:coverage`, `npx playwright install chromium && npm run test:e2e`, `npm run lint`. Не робив стретч-завдання (SoA, SharedArrayBuffer/Atomics, `--jitless`/Bun/Deno). Flame-діаграми — власний генератор `scripts/perf/flame.mjs` із `.cpuprofile` (а не скріншот DevTools).
+`npm run typecheck`, `npm test`, `npm run test:coverage`, `npx playwright install chromium && npm run test:e2e`, `npm run lint`. Не робив стретч-завдання (SoA, SharedArrayBuffer/Atomics, `--jitless`/Bun/Deno). Flame-діаграми — власний генератор `scripts/perf/flame.mjs` із `.cpuprofile`; для захисту додайте два скріни з Chrome DevTools → Performance (до/після). `Vector2` лишається незмінним (`readonly`, Lab 06): `Entity.update` створює вектор на сутність за крок, але на сервері це не потрапило в топ профілю, тож я це не чіпав.
+
+---
+
+# Lab 08 — Ship It: Docker, метрики, живий URL
+
+> **Чесно про перевірку.** У середовищі, де це писалось, немає Docker-демона й npm-реєстру. Тому: **образ зібрано й запущено лише на комп'ютері автора** (результати нижче; збірка в GitHub Actions і деплой на Fly ще не виконувались), **pino і prom-client у моєму середовищі не встановлювались** (код написаний під їхні API, а проганявся через тонкі локальні шими; шими в архів НЕ входять). Усе інше виміряно по-справжньому на запущеному сервері: SIGTERM, SIGSTOP, Origin, ліміти, chaos, `/metrics` (текст із шима має той самий формат експозиції). Розгортання, живий URL, два віддалені гравці, uptime-монітор, відео й PWA на телефоні — **тільки ви**: чеклист у [docs/LAUNCH.md](docs/LAUNCH.md), цифри там не вигадані.
+
+## Що зроблено
+
+| | |
+|---|---|
+| M1. Процес | SIGTERM → `ready=false` → повідомлення `shutdown` + close 1001 → flush логів → код 0. `/health` (liveness + `version`, `sha`), `/ready` (readiness, 503 під час зупинки), pino JSON-логи з child-логерами (`socket`, `roomId`, `playerId`), `/metrics` (prom-client), уся конфігурація в одній zod-схемі + `.env.example`, версія збірки (git SHA) у `/health` і в кутку HUD |
+| M2. Захист | Перевірка `Origin` при рукостисканні (same-origin + `ALLOWED_ORIGINS`), ліміт з'єднань на IP (+ `TRUST_PROXY` для X-Forwarded-For), метрики відхилень за причинами, клієнт: зрозуміле повідомлення й повернення в лобі, chaos-скрипти |
+| M3. Контейнер і конвеєр (образ 156 МБ, див. нижче) | Багатостадійний `Dockerfile` (не root, exec-форма `CMD`, `HEALTHCHECK`, без npm у runtime), `.dockerignore`, `docker-compose.yml`, `fly.toml`, `release.yml` (тег `v*` → перевірки → GHCR → Fly → smoke-перевірка `sha`) |
+| M4. Запуск | PWA (manifest, іконки 192/512/maskable, service worker), README як сторінка продукту, чеклист запуску |
+
+## Метрики (`GET /metrics`, формат Prometheus)
+
+| Метрика | Що показує |
+|---|---|
+| `dogfight_connections`, `dogfight_players`, `dogfight_rooms` | скільки зараз (читаються в момент скрейпу) |
+| `dogfight_messages_in_total{kind}`, `dogfight_messages_out_total` | лічильники; msg/s = `rate(...[1m])` у Prometheus |
+| `dogfight_bytes_in_total`, `dogfight_bytes_out_total` | байти/с так само через `rate()` |
+| `dogfight_tick_work_p99_ms{room}`, `dogfight_tick_jitter_p99_ms{room}`, `dogfight_ticks_skipped{room}` | здоров'я такту по кімнатах |
+| `dogfight_event_loop_utilization` | завантаження event loop між скрейпами |
+| `dogfight_rejections_total{reason}` | `origin`, `ip_limit`, `rate_limit`, `invalid_message`, `too_big`, `room_full`, `slow_client`, `draining`... |
+| `dogfight_ws_closes_total{code}` | закриття за кодом |
+| `process_*`, `nodejs_*` | стандартні (RSS, CPU, GC, lag) |
+
+## Образ Docker (виміряно на `docker build` у Docker Desktop)
+
+| | |
+|---|---|
+| Розпакований розмір (сума шарів, `docker history`) | **≈ 156 МБ** (`du /` усередині: 148.7 МБ) — вимога < 200 МБ виконана |
+| Стиснений (у реєстрі) | **55.2 МБ** |
+| Колонка `DISK USAGE` у `docker images` (Docker Desktop) | 211 МБ — це розпакований розмір **плюс** стиснені blob-и в сховищі, тому не є розміром образу |
+| Склад | бінарник Node 130 МБ, Alpine 9 МБ, `libstdc++` 3 МБ, `node_modules` 13 МБ, клієнт 0.3 МБ, shared 0.2 МБ |
+| Користувач | `uid=1000(node)`, не root |
+| HEALTHCHECK | `healthy` через ≈ 15 с після старту; `GET /health` → `{"status":"ok","version":"0.0.0","sha":"local",...}` |
+
+**Що виправили за вимірюванням.** Перша версія брала `node:22-alpine` як є й видаляла npm у пізнішому шарі: шар із Node важив 163 МБ (бінарник 124 + npm/yarn/corepack + заголовки), а видалення в наступному шарі розмір не зменшує. Тепер у чистий `alpine` копіюється лише бінарник `node` (+`libstdc++`): npm/yarn/corepack/заголовки в образ не потрапляють. Бінарник Node (130 МБ) — понад 80% образу, далі зменшувати (`strip`, інший рантайм) не стали.
+
+## Chaos-тести (`npm run chaos:client-kill | chaos:flood | chaos:server-kill`)
+
+Скрипти самі піднімають локальний сервер (або `--target URL` для живого; `server-kill` лише локально). Результат прогону:
+
+| Сценарій | Результат |
+|---|---|
+| Обрив 15 із 30 клієнтів без close-кадру (`terminate`) | сервер живий; метрика `dogfight_connections` = 15; решта 15 і далі отримують снапшоти |
+| Флуд сміттям ≈ 970 повід./с (невалідний JSON, невідомий тип, 5 КБ, NUL) протягом 5 с, нові з'єднання підряд | **tick p99 0.7 мс** (до флуду 1.3 мс), здорові гравці отримали >100 снапшотів, не відключені; відхилення видно в `/metrics` |
+| `SIGKILL` сервера | клієнт бачить обрив за ≈ 50 мс (код 1006); після рестарту стара кімната зникла → 4004 → клієнт показує «Кімнату не знайдено» й повертається в лобі; у новій кімнаті гра працює |
+
+Ізоляцію доводить метрика, а не відчуття: `dogfight_tick_work_p99_ms` під флудом не зростає, бо сміття відсікається rate limit-ом/валідацією до ігрового коду.
+
+## Prove it (виміряно)
+
+1. **SIGTERM.** `node` напряму: код 0 за **≈ 0.5 с** з підключеним клієнтом; клієнт отримав `shutdown`, потім close **1001**. Тест `server/test/process.test.ts` перевіряє код 0, <10 с і що кожен рядок логу — JSON. **У контейнері** (exec-форма `CMD`): `docker stop` за **573 мс**, код виходу **0**, в `docker logs` — JSON-рядки `signal received` → `stop accepting connections` → `match logs flushed` → `complete` (`durationMs: 2`). Варіант `CMD npm start` (де npm/`sh` не пересилають SIGTERM, очікується 10 с до SIGKILL і код 137) **не міряв**.
+2. **Кеш шарів.** Не міряв (немає Docker). Експеримент: змінити один рядок у `client/src`, `docker build` двічі — з поточним Dockerfile (маніфести копіюються першими) крок `npm ci` бере з кешу; переставте `COPY client` перед `COPY package*.json` і порівняйте.
+3. **`ws://` зі сторінки `https://`.** Не міряв (немає живого https-URL): браузер блокує як mixed content. Перевірити: відкрити задеплоєну сторінку, у консолі `new WebSocket("ws://<app>.fly.dev/ws")`.
+4. **Чужий Origin.** Той самий скрипт проти Lab 7 і Lab 8: Lab 7 — «з'єднання ПРИЙНЯТО з чужим Origin»; Lab 8 — «відхилено, HTTP 403» (і тест `production.test.ts`).
+5. **SIGSTOP на 3 с.** `/health` під SIGSTOP — таймаут (процес заморожений), після `SIGCONT` — 200 через 3 мс, сокет живий, **найбільша пауза між снапшотами клієнта 3037 мс**. А `dogfight_event_loop_utilization` після відновлення — 0.005 (у спокої 0.031): **ELU не бачить заморожування** (він міряє зайнятість циклу, а не відсутність ходу); виявляти такий стан треба зовнішнім зондом `/health` і метрикою `dogfight_ticks_skipped`, не ELU.
+
+## Відповіді на рефлексійні питання
+
+1. **SIGTERM → вихід.** Обробник виставляє `ready=false` (`/ready` → 503), відхиляє нові WS, шле кожному клієнту `shutdown` і закриває 1001, зупиняє матчі, дочікується flush логів матчів, закриває HTTP-сервер (повільних добиває таймер) і виходить з кодом 0. `CMD npm start` заважає: npm (і `sh -c`) стає PID 1 і не пересилає сигнал дочірньому `node`, тож через 10 с Docker шле SIGKILL: клієнти бачать обрив 1006 без пояснення, логи не скинуті. Якщо ігнорувати SIGTERM — те саме: гравців просто «відрізає».
+2. **Чому WS важче масштабувати.** REST-запит безстановий — його обслужить будь-який інстанс. У WS стан кімнати живе в пам'яті процесу, а гравці однієї кімнати мають бути на одному інстансі. Варіанти: sticky-маршрутизація за room id (проста, затримки нема) або Redis pub/sub (кімната може розтягнутись між інстансами, але кожен снапшот 30 Гц × гравців іде через зовнішню шину: +затримка й трафік). Тут підходить sticky за room id, бо матч — авторитетна симуляція одного процесу; **у проєкті не реалізовано** (один інстанс), це стретч.
+3. **Чому `wss://`.** Сторінка по https забороняє ws:// (mixed content), плюс шифрування. TLS термінується на проксі платформи (Fly): до застосунку доходить звичайний ws, тому потрібні `TRUST_PROXY` (справжній IP клієнта в X-Forwarded-For) і збережений `Host` для перевірки Origin. Проксі має власний таймаут простою, тому heartbeat (15 с) має бути суттєво коротшим за нього; конкретне значення таймауту вашої платформи варто перевірити в її документації.
+4. **Origin.** CORS на WebSocket не діє: чужа сторінка може відкрити `new WebSocket(...)` до нашого сервера. Захист — перевірка заголовка `Origin` в обробнику `upgrade` (`security.ts`), відповідь 403 до рукостискання. Це захищає браузерних користувачів від чужих сторінок; не-браузерний клієнт Origin може підробити (тому там потрібна автентифікація, якої тут нема).
+5. **Liveness і readiness.** `/health` — «процес живий, не перезапускай»; платформа за його провалу перезапускає контейнер. `/ready` — «можна слати трафік»; за провалу (старт, зупинка) балансувальник лише перестає направляти нових гравців, процес не вбиває. Під час shutdown `/ready` = 503, `/health` = 200.
+6. **JSON-логи в stdout.** Платформа сама збирає stdout, а JSON-рядок можна фільтрувати за полями (`roomId`, `level`) замість grep по тексту; ротація й файли — проблема платформи. pino швидкий, бо серіалізує лише потрібне, а «красивий» формат за потреби відокремлюють у транспорті (окремий потік/процес, `pino-pretty` у dev), тобто основний потік не форматує для людини — той самий принцип «важку роботу не на головному потоці», що в Lab 7 (там експеримент з worker для кодування дав no-go, бо робота була дешевшою за обмін повідомленнями; у логері JSON і є рідний формат, тож форматувати майже нічого). pino-транспорт не вмикався — JSON пишеться напряму.
+7. **Багатостадійна збірка.** Стадія 1 має те, що потрібне лише для збірки: dev-залежності (Vite, TypeScript), вихідники клієнта, `vite build`. У runtime потрапляють лише production-залежності, TS сервера/shared і готовий `client/dist`. `package*.json` копіюється перед кодом, щоб шар `npm ci` кешувався, доки не змінились залежності: зміна одного рядка коду не перевстановлює все.
+8. **Скільки гравців.** Виміряно на одній машині з генератором навантаження: tick p99 14.8 мс при 256 в одній кімнаті; з кімнатами по 8 ELU росте лінійно, насичення ≈ 900 клієнтів на ядро. Для `shared-cpu-1x`/256 МБ **не міряно**; реальний RTT незнайомця — теж (таблиця в README чекає на дані). Практична оцінка «сотні гравців на інстанс» — гіпотеза до перевірки `loadtest.mjs --target`. Першим змінити варто мережевий вивід: дельти й area-of-interest, бо `writev` — головна стаття витрат.
+9. **Краш о 3-й ночі.** Дізнатись можна від uptime-монітора на `/health` (потрібно налаштувати — чеклист) і з перезапуску платформою (`restart` + healthcheck). Перше, що дивитись: `fly logs` / `docker logs` — останні рядки з `"level":"error"` і повідомленням `uncaughtException`/`unhandledRejection` (процес логує причину й виходить з кодом 1); далі `/metrics` (RSS, `dogfight_ticks_skipped`, `rejections_total`) і `fly status`. Sentry не підключено.
+
+## Що перевірити після `npm install`
+
+```bash
+npm run typecheck && npm test && npm run lint
+npm run build && npm start                         # http://127.0.0.1:3000, /health /ready /metrics
+npm run chaos:client-kill && npm run chaos:flood && npm run chaos:server-kill
+docker build -t dogfight:local --build-arg GIT_SHA=local . && docker history dogfight:local   # сума шарів, не колонка DISK USAGE
+docker run -d --name df -p 3000:3000 dogfight:local && docker stop df && docker logs df --tail 5   # код виходу: docker inspect df --format "{{.State.ExitCode}}"
+```
+
+У моєму середовищі не перевірялось (автор запускав локально: `npm test`, `npm run lint`, `npm run build` і збірку Docker-образу пройшли): реальні pino/prom-client і Vite. Biome: кілька суто стильових правил вимкнено в `biome.json` для коду з ранніх лаб.

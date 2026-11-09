@@ -1,4 +1,5 @@
 import { hashWorld } from "@dogfight/shared/sim";
+import { seqNo as asSeq, tick as asTick } from "@dogfight/shared/types";
 import { Match } from "../src/match.ts";
 import { RoomManager } from "../src/rooms.ts";
 
@@ -14,8 +15,8 @@ export function runningHash(seed: number, ticks: number): number {
   for (let t = 0; t < ticks; t++) {
     match.receiveInput(id, {
       type: "input",
-      seq: t + 1,
-      tick: t,
+      seq: asSeq(t + 1),
+      tick: asTick(t),
       thrust: t % 17 < 11 ? 1 : 0,
       turn: ([0, 1, 1, 0, -1] as const)[Math.floor(t / 9) % 5] ?? 0,
       fire: t % 13 === 0 ? 1 : 0,

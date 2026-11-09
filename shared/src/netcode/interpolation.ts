@@ -1,13 +1,13 @@
 import { DT, TICK_MS } from "../constants.ts";
-import { lerpAngle } from "../sim/vector.ts";
-import type { EntityId, Arena } from "../types.ts";
 import type { EntityRecord } from "../sim/entity.ts";
+import { lerpAngle } from "../sim/vector.ts";
+import type { Arena, EntityId, SeqNo, Tick } from "../types.ts";
 import { lerpWrap, wrapInto } from "./geometry.ts";
 
 // Снапшот у буфері: записи плюс індекс за id і час прибуття.
 export interface BufferedSnapshot {
-  readonly tick: number;
-  readonly ack: number;
+  readonly tick: Tick;
+  readonly ack: SeqNo;
   readonly entities: readonly EntityRecord[];
   readonly byId: ReadonlyMap<EntityId, EntityRecord>;
   readonly recvMs: number;
@@ -57,8 +57,8 @@ export class SampleScratch {
 }
 
 export interface SnapshotInput {
-  readonly tick: number;
-  readonly ack: number;
+  readonly tick: Tick;
+  readonly ack: SeqNo;
   readonly entities: readonly EntityRecord[];
 }
 
@@ -115,7 +115,12 @@ export class SnapshotBuffer {
   }
 
   // Те саме, але без алокацій у сталому режимі: записи беруться з пулу `scratch`.
-  sampleInto(scratch: SampleScratch, renderTick: number, arena: Arena, maxExtrapolateTicks = 4): SampleMode {
+  sampleInto(
+    scratch: SampleScratch,
+    renderTick: number,
+    arena: Arena,
+    maxExtrapolateTicks = 4,
+  ): SampleMode {
     const { snaps } = this;
     const out = scratch.entities;
     out.length = 0;
@@ -178,7 +183,10 @@ export class ServerClock {
   #head = 0; // індекс найстарішого
   #count = 0;
 
-  constructor({ windowMs = 5000, gain = 0.1 }: { windowMs?: number; gain?: number } = {}) {
+  constructor({
+    windowMs = 5000,
+    gain = 0.1,
+  }: { windowMs?: number; gain?: number } = {}) {
     this.windowMs = windowMs;
     this.gain = gain;
   }
@@ -191,7 +199,7 @@ export class ServerClock {
     return this.#count;
   }
 
-  observe(tick: number, recvMs: number): void {
+  observe(tick: Tick, recvMs: number): void {
     const cap = this.#at.length;
     if (this.#count === cap) {
       this.#head = (this.#head + 1) % cap; // переповнення: відкидаємо найстаріший
@@ -201,17 +209,25 @@ export class ServerClock {
     this.#at[slot] = recvMs;
     this.#value[slot] = recvMs - tick * TICK_MS;
     this.#count++;
-    while (this.#count > 0 && recvMs - (this.#at[this.#head] ?? 0) > this.windowMs) {
+    while (
+      this.#count > 0 &&
+      recvMs - (this.#at[this.#head] ?? 0) > this.windowMs
+    ) {
       this.#head = (this.#head + 1) % cap;
       this.#count--;
     }
     let target = Number.POSITIVE_INFINITY;
     for (let i = 0; i < this.#count; i++) {
-      target = Math.min(target, this.#value[(this.#head + i) % cap] ?? Number.POSITIVE_INFINITY);
+      target = Math.min(
+        target,
+        this.#value[(this.#head + i) % cap] ?? Number.POSITIVE_INFINITY,
+      );
     }
     // Повільно підтягуємо оцінку до мінімуму, щоб час не стрибав.
     this.offset =
-      this.offset === null ? target : this.offset + (target - this.offset) * this.gain;
+      this.offset === null
+        ? target
+        : this.offset + (target - this.offset) * this.gain;
   }
 
   // Оцінка поточного тику сервера (дробове).

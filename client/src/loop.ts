@@ -3,10 +3,16 @@
 export function createAccumulator({
   step = 1 / 60,
   maxFrame = 0.25,
-}: { step?: number; maxFrame?: number } = {}) {
+}: {
+  step?: number;
+  maxFrame?: number;
+} = {}) {
   let acc = 0;
   return {
-    push(frameSeconds: number, simulate: (dt: number) => void): { steps: number; alpha: number } {
+    push(
+      frameSeconds: number,
+      simulate: (dt: number) => void,
+    ): { steps: number; alpha: number } {
       acc += Math.min(frameSeconds, maxFrame);
       let steps = 0;
       while (acc >= step) {
@@ -32,7 +38,12 @@ export interface LoopOptions {
   render: (alpha: number, metrics: LoopMetrics) => void;
 }
 
-export function createLoop({ step = 1 / 60, simulate, render, maxFrame }: LoopOptions) {
+export function createLoop({
+  step = 1 / 60,
+  simulate,
+  render,
+  maxFrame,
+}: LoopOptions) {
   const accumulator = createAccumulator(
     maxFrame === undefined ? { step } : { step, maxFrame },
   );

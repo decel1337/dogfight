@@ -14,7 +14,9 @@ test("netsim: затримка напрямку = latency/2", async () => {
   const sim = new NetSim();
   sim.configure({ latency: 200 });
   const t0 = performance.now();
-  const at = await new Promise<number>((resolve) => sim.pass(() => resolve(performance.now())));
+  const at = await new Promise<number>((resolve) =>
+    sim.pass(() => resolve(performance.now())),
+  );
   assert.ok(Math.abs(at - t0 - 100) < 25, `${at - t0}`);
 });
 
@@ -35,18 +37,19 @@ test("netsim: drop=100 губить ненадійні, але не надійн
 
 test("netsim: надійні зберігають порядок навіть при великому джитері", async () => {
   let seed = 1;
-  const rng = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const rng = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
   const sim = new NetSim({ rng });
   sim.configure({ latency: 20, jitter: 80 });
   const order: number[] = [];
-  for (let i = 0; i < 30; i++) sim.pass(() => order.push(i), { reliable: true });
+  for (let i = 0; i < 30; i++)
+    sim.pass(() => order.push(i), { reliable: true });
   await sleep(150);
   assert.deepEqual(order, [...Array(30).keys()]);
 });
 
 test("netsim: ненадійні можуть переставлятись", async () => {
   let seed = 3;
-  const rng = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const rng = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
   const sim = new NetSim({ rng });
   sim.configure({ latency: 20, jitter: 100 });
   const order: number[] = [];

@@ -9,10 +9,17 @@ test("token bucket: дозволених запитів ≤ burst + rate·час
     fc.property(
       fc.integer({ min: 1, max: 50 }),
       fc.integer({ min: 1, max: 20 }),
-      fc.array(fc.integer({ min: 0, max: 400 }), { minLength: 1, maxLength: 200 }),
+      fc.array(fc.integer({ min: 0, max: 400 }), {
+        minLength: 1,
+        maxLength: 200,
+      }),
       (rate, burst, gaps) => {
         let now = 0;
-        const bucket = new TokenBucket({ ratePerSec: rate, burst, now: () => now });
+        const bucket = new TokenBucket({
+          ratePerSec: rate,
+          burst,
+          now: () => now,
+        });
         let allowed = 0;
         for (const gap of gaps) {
           now += gap;

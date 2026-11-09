@@ -1,0 +1,24 @@
+# Контекст збірки лише з потрібного: менше ніж 1 МБ замість сотень МБ.
+.git
+.github
+node_modules
+**/node_modules
+client/dist
+coverage
+dist
+logs
+**/logs
+e2e
+perf
+docs
+scripts
+playwright-report
+test-results
+*.log
+.env
+.env.*
+!.env.example
+**/test
+*.md
+Dockerfile
+docker-compose.yml

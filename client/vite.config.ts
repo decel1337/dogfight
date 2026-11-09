@@ -8,7 +8,17 @@ export default defineConfig({
   server: {
     proxy: {
       "/api": target,
-      "/ws": { target, ws: true },
+      // Сервер перевіряє Origin рукостискання (Lab 8): у dev підставляємо origin цілі,
+      // бо Vite пересилає Origin сторінки (5173), що не збігається з Host (3000).
+      "/ws": {
+        target,
+        ws: true,
+        configure: (proxy) => {
+          proxy.on("proxyReqWs", (proxyReq) =>
+            proxyReq.setHeader("origin", target),
+          );
+        },
+      },
     },
   },
 });

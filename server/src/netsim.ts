@@ -56,7 +56,10 @@ export class NetSim {
   }
 
   // Пропускає виклик fn крізь «мережу». Повертає false, якщо пакет втрачено.
-  pass(fn: () => void, { reliable = false }: { reliable?: boolean } = {}): boolean {
+  pass(
+    fn: () => void,
+    { reliable = false }: { reliable?: boolean } = {},
+  ): boolean {
     this.sent++;
     if (!reliable && this.drop > 0 && this.rng() * 100 < this.drop) {
       this.dropped++;

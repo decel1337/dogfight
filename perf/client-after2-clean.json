@@ -1,0 +1,228 @@
+{
+  "label": "after2",
+  "secs": 30,
+  "bots": 8,
+  "entitiesInScene": 47,
+  "frames": 1838,
+  "frameMs": {
+    "n": 1838,
+    "p50": 16.7,
+    "p95": 16.8,
+    "p99": 16.8,
+    "max": 16.8
+  },
+  "gc": {
+    "minor": {
+      "count": 26,
+      "totalMs": 28.39,
+      "maxMs": 2.13
+    },
+    "major": {
+      "count": 2,
+      "totalMs": 13.45,
+      "maxMs": 8.29
+    }
+  },
+  "gcTimeline": [
+    {
+      "tSec": 0.8,
+      "kind": "minor",
+      "ms": 2.13,
+      "heapBeforeMb": 5.2,
+      "heapAfterMb": 3.5
+    },
+    {
+      "tSec": 1.9,
+      "kind": "minor",
+      "ms": 1.72,
+      "heapBeforeMb": 5.4,
+      "heapAfterMb": 3.5
+    },
+    {
+      "tSec": 3,
+      "kind": "minor",
+      "ms": 0.7,
+      "heapBeforeMb": 5.3,
+      "heapAfterMb": 3.5
+    },
+    {
+      "tSec": 4.2,
+      "kind": "minor",
+      "ms": 2.05,
+      "heapBeforeMb": 5.2,
+      "heapAfterMb": 3.6
+    },
+    {
+      "tSec": 5.5,
+      "kind": "minor",
+      "ms": 1.54,
+      "heapBeforeMb": 5.2,
+      "heapAfterMb": 3.6
+    },
+    {
+      "tSec": 6.7,
+      "kind": "minor",
+      "ms": 0.69,
+      "heapBeforeMb": 5.4,
+      "heapAfterMb": 3.6
+    },
+    {
+      "tSec": 8.3,
+      "kind": "minor",
+      "ms": 1.43,
+      "heapBeforeMb": 5.6,
+      "heapAfterMb": 3.6
+    },
+    {
+      "tSec": 9.8,
+      "kind": "minor",
+      "ms": 0.82,
+      "heapBeforeMb": 5.3,
+      "heapAfterMb": 3.7
+    },
+    {
+      "tSec": 11.3,
+      "kind": "minor",
+      "ms": 0.67,
+      "heapBeforeMb": 5.3,
+      "heapAfterMb": 3.7
+    },
+    {
+      "tSec": 12.8,
+      "kind": "minor",
+      "ms": 0.95,
+      "heapBeforeMb": 5.5,
+      "heapAfterMb": 3.8
+    },
+    {
+      "tSec": 14.3,
+      "kind": "minor",
+      "ms": 1.2,
+      "heapBeforeMb": 5.4,
+      "heapAfterMb": 3.8
+    },
+    {
+      "tSec": 16.1,
+      "kind": "minor",
+      "ms": 0.9,
+      "heapBeforeMb": 5.4,
+      "heapAfterMb": 3.8
+    },
+    {
+      "tSec": 16.6,
+      "kind": "minor",
+      "ms": 1.01,
+      "heapBeforeMb": 4.7,
+      "heapAfterMb": 3.9
+    },
+    {
+      "tSec": 17.9,
+      "kind": "minor",
+      "ms": 0.69,
+      "heapBeforeMb": 5.5,
+      "heapAfterMb": 3.8
+    },
+    {
+      "tSec": 19.7,
+      "kind": "minor",
+      "ms": 1.31,
+      "heapBeforeMb": 5.5,
+      "heapAfterMb": 3.9
+    },
+    {
+      "tSec": 20.4,
+      "kind": "minor",
+      "ms": 0.88,
+      "heapBeforeMb": 4.7,
+      "heapAfterMb": 3.9
+    },
+    {
+      "tSec": 21,
+      "kind": "minor",
+      "ms": 0.62,
+      "heapBeforeMb": 5,
+      "heapAfterMb": 3.9
+    },
+    {
+      "tSec": 21.7,
+      "kind": "minor",
+      "ms": 1.15,
+      "heapBeforeMb": 4.8,
+      "heapAfterMb": 3.9
+    },
+    {
+      "tSec": 22.3,
+      "kind": "minor",
+      "ms": 1.7,
+      "heapBeforeMb": 5.2,
+      "heapAfterMb": 4
+    },
+    {
+      "tSec": 23,
+      "kind": "minor",
+      "ms": 0.63,
+      "heapBeforeMb": 4.8,
+      "heapAfterMb": 3.9
+    },
+    {
+      "tSec": 23.7,
+      "kind": "minor",
+      "ms": 0.73,
+      "heapBeforeMb": 4.8,
+      "heapAfterMb": 4
+    },
+    {
+      "tSec": 24.5,
+      "kind": "minor",
+      "ms": 0.69,
+      "heapBeforeMb": 4.8,
+      "heapAfterMb": 4
+    },
+    {
+      "tSec": 26.1,
+      "kind": "minor",
+      "ms": 0.89,
+      "heapBeforeMb": 5.6,
+      "heapAfterMb": 4
+    },
+    {
+      "tSec": 26.8,
+      "kind": "major",
+      "ms": 8.29,
+      "heapBeforeMb": 4.5,
+      "heapAfterMb": 2.9
+    },
+    {
+      "tSec": 27.5,
+      "kind": "major",
+      "ms": 5.16,
+      "heapBeforeMb": 3.3,
+      "heapAfterMb": 2.9
+    },
+    {
+      "tSec": 28.5,
+      "kind": "minor",
+      "ms": 1.34,
+      "heapBeforeMb": 4,
+      "heapAfterMb": 3.1
+    },
+    {
+      "tSec": 29.2,
+      "kind": "minor",
+      "ms": 0.94,
+      "heapBeforeMb": 4,
+      "heapAfterMb": 3.2
+    },
+    {
+      "tSec": 29.8,
+      "kind": "minor",
+      "ms": 1.04,
+      "heapBeforeMb": 4.1,
+      "heapAfterMb": 3.2
+    }
+  ],
+  "measures": {},
+  "allocatedKbTotal": 0,
+  "topAlloc": [],
+  "topSelf": []
+}

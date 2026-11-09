@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import path from "node:path";
 import { test } from "vitest";
 import { ConfigError, loadConfig } from "../src/config.ts";
 
@@ -21,13 +22,14 @@ test("config: читає та приводить типи з env", () => {
   });
   assert.equal(config.port, 8080);
   assert.equal(config.host, "0.0.0.0");
-  assert.equal(config.logDir, "/var/log/x");
+  assert.equal(config.logDir, path.resolve("/var/log/x"));
   assert.equal(config.debugRoutes, true);
 });
 
 test("config: збирає ВСІ помилки одразу", () => {
   assert.throws(
-    () => loadConfig({ PORT: "abc", MAX_ROOMS: "0", ENABLE_DEBUG_ROUTES: "maybe" }),
+    () =>
+      loadConfig({ PORT: "abc", MAX_ROOMS: "0", ENABLE_DEBUG_ROUTES: "maybe" }),
     (error) => {
       assert.ok(error instanceof ConfigError);
       assert.equal(error.problems.length, 3);

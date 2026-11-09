@@ -1,8 +1,16 @@
 import assert from "node:assert/strict";
-import { readFile, readdir } from "node:fs/promises";
-import { test } from "vitest";
+import { readdir, readFile } from "node:fs/promises";
 import { CLOSE } from "@dogfight/shared/protocol";
-import { type AppContext, type TestClient, connect, createRoom, joined, sleep, withApp } from "./helpers.ts";
+import { test } from "vitest";
+import {
+  type AppContext,
+  connect,
+  createRoom,
+  joined,
+  sleep,
+  type TestClient,
+  withApp,
+} from "./helpers.ts";
 
 async function open(ctx: Pick<AppContext, "wsUrl">): Promise<TestClient> {
   const client = connect(ctx.wsUrl);
@@ -19,7 +27,10 @@ test("два клієнти: join, roster, chat", async () => {
     const annJoined = await ann.next("joined");
     assert.equal(annJoined.you.name, "Ann");
     assert.equal(annJoined.room.id, room.id);
-    assert.deepEqual((await ann.next("roster")).players.map((p) => p.name), ["Ann"]);
+    assert.deepEqual(
+      (await ann.next("roster")).players.map((p) => p.name),
+      ["Ann"],
+    );
 
     const bob = await joined(ctx, room.id, "Bob");
     assert.deepEqual(
@@ -37,7 +48,10 @@ test("два клієнти: join, roster, chat", async () => {
 
     bob.ws.close();
     const afterLeave = await ann.next("roster");
-    assert.deepEqual(afterLeave.players.map((p) => p.name), ["Ann"]);
+    assert.deepEqual(
+      afterLeave.players.map((p) => p.name),
+      ["Ann"],
+    );
 
     // Остання людина вийшла -> кімната видалена
     ann.ws.close();
@@ -70,9 +84,11 @@ test("невалідні повідомлення закривають соке�
     const cases = {
       "не JSON": () => "not json",
       "невідомий тип": () => JSON.stringify({ v: 1, type: "teleport" }),
-      "без версії": () => JSON.stringify({ type: "join", room: room.id, name: "A" }),
+      "без версії": () =>
+        JSON.stringify({ type: "join", room: room.id, name: "A" }),
       "chat до join": () => JSON.stringify({ v: 1, type: "chat", text: "hi" }),
-      "зла форма join": () => JSON.stringify({ v: 1, type: "join", room: 5, name: "A" }),
+      "зла форма join": () =>
+        JSON.stringify({ v: 1, type: "join", room: 5, name: "A" }),
     };
     for (const [label, make] of Object.entries(cases)) {
       const client = await open(ctx);
@@ -128,7 +144,8 @@ test("rate limit: понад burst -> 4003", async () => {
     const room = await createRoom(ctx);
     const client = await joined(ctx, room.id, "Spammer");
     for (let i = 0; i < 20; i++) {
-      if (client.ws.readyState === client.ws.OPEN) client.send({ type: "chat", text: `m${i}` });
+      if (client.ws.readyState === client.ws.OPEN)
+        client.send({ type: "chat", text: `m${i}` });
     }
     assert.equal((await client.closed).code, CLOSE.RATE_LIMITED);
   });
@@ -171,7 +188,10 @@ test("heartbeat: клієнт, що не відповідає pong, termin-ує�
     await alive.next("joined");
     await dead.next("joined");
 
-    const result = await Promise.race([dead.closed, sleep(1000).then(() => "alive")]);
+    const result = await Promise.race([
+      dead.closed,
+      sleep(1000).then(() => "alive"),
+    ]);
     assert.ok(typeof result !== "string", "мертвий сокет мав бути розірваний");
     assert.equal(result.code, 1006, "terminate = аномальне закриття");
 
@@ -192,13 +212,22 @@ test("політика slow-client: chat пропускається, крити�
     // Імітуємо переповнений буфер на стороні сервера для сокета Slow.
     // clients — Set у порядку підключення: [Fast, Slow].
     const slowSocket = [...ctx.app.ws.clients][1];
-    Object.defineProperty(slowSocket, "bufferedAmount", { get: () => 5_000_000 });
+    Object.defineProperty(slowSocket, "bufferedAmount", {
+      get: () => 5_000_000,
+    });
 
     fast.send({ type: "chat", text: "hello" });
     assert.equal((await fast.next("chat")).text, "hello", "швидкий отримує");
     await sleep(100);
-    assert.ok(!slow.inbox.some((m) => m.type === "chat"), "повільному chat не шлемо");
-    assert.equal(slow.ws.readyState, slow.ws.OPEN, "chat — некритичний, не закриваємо");
+    assert.ok(
+      !slow.inbox.some((m) => m.type === "chat"),
+      "повільному chat не шлемо",
+    );
+    assert.equal(
+      slow.ws.readyState,
+      slow.ws.OPEN,
+      "chat — некритичний, не закриваємо",
+    );
 
     // Зміна складу — критична: клієнт повільний, тож закриваємо його
     const third = await joined(ctx, room.id, "Third");
@@ -215,13 +244,18 @@ test("graceful shutdown: сокети закриваються з 1001, лог �
     const ann = await joined(ctx, room.id, "Ann");
     ann.send({ type: "chat", text: "до зупинки" });
     await ann.next("chat");
-    const replays = (await (await fetch(`${ctx.http}/api/replays`)).json()) as unknown[];
+    const replays = (await (
+      await fetch(`${ctx.http}/api/replays`)
+    ).json()) as unknown[];
     logFile = replays[0];
 
     await ctx.app.stop();
     clientCode = (await ann.closed).code;
 
-    await assert.rejects(fetch(`${ctx.http}/health`), "сервер більше не слухає");
+    await assert.rejects(
+      fetch(`${ctx.http}/health`),
+      "сервер більше не слухає",
+    );
   });
   assert.equal(clientCode, CLOSE.GOING_AWAY);
   assert.ok(logFile, "у списку записів був лог матчу");
@@ -238,7 +272,9 @@ test("graceful shutdown: файл логу містить усі події та
     await ann.closed;
 
     // Сервер зупинений, тому читаємо файл логу напряму з диска.
-    const files = (await readdir(ctx.logDir)).filter((f) => f.endsWith(".ndjson"));
+    const files = (await readdir(ctx.logDir)).filter((f) =>
+      f.endsWith(".ndjson"),
+    );
     assert.equal(files.length, 1);
     const events = (await readFile(`${ctx.logDir}/${files[0]}`, "utf8"))
       .trimEnd()

@@ -1,8 +1,8 @@
 import type { EntityRecord } from "@dogfight/shared/sim";
 import { assertNever } from "@dogfight/shared/types";
 import type { Effect, Scene } from "../game/netgame.ts";
-import { type CanvasSize, beginFrame } from "./canvas.ts";
-import { type SpriteSheet, drawFrame } from "./sprites.ts";
+import { beginFrame, type CanvasSize } from "./canvas.ts";
+import { drawFrame, type SpriteSheet } from "./sprites.ts";
 
 export interface DrawImages {
   ship?: SpriteSheet | undefined;
@@ -33,7 +33,11 @@ const PICKUP_COLORS = ["#58a6ff", "#3fb950"]; // shield, rapid
 function drawShip(
   ctx: CanvasRenderingContext2D,
   ship: Drawable,
-  { sprite, mine, thrusting }: { sprite: SpriteSheet | undefined; mine: boolean; thrusting: boolean },
+  {
+    sprite,
+    mine,
+    thrusting,
+  }: { sprite: SpriteSheet | undefined; mine: boolean; thrusting: boolean },
 ): void {
   if (sprite) {
     drawFrame(ctx, sprite, thrusting ? 1 : 0, SHIP_SIZE);
@@ -78,7 +82,8 @@ function drawBullets(ctx: CanvasRenderingContext2D, scene: Scene): void {
   for (let color = 0; color < 2; color++) {
     ctx.beginPath();
     for (const e of scene.entities) {
-      if (e.kind !== 2 || ((e.flags & HOMING) !== 0) !== (color === 1)) continue;
+      if (e.kind !== 2 || ((e.flags & HOMING) !== 0) !== (color === 1))
+        continue;
       ctx.moveTo(e.x + 3, e.y);
       ctx.arc(e.x, e.y, 3, 0, TAU);
     }
@@ -172,15 +177,28 @@ function drawEffect(ctx: CanvasRenderingContext2D, effect: Effect): void {
 // Рядки HUD міняються рідко (FPS — двічі на секунду, рахунок — по події), а
 // шаблонні рядки + масив + forEach-замикання щокадру були помітним алокатором.
 // Тому ключ із чисел кешує готові рядки; перебудова — лише коли ключ змінився.
-const hud = {
-  steps: "" as number | string,
-  fps: "" as number | string,
+interface HudCache {
+  steps: number | string;
+  fps: number | string;
+  count: number;
+  has: boolean;
+  score: number;
+  hp: number;
+  flags: number;
+  lines: string[];
+  dead: string;
+  deadKey: number;
+}
+
+const hud: HudCache = {
+  steps: "",
+  fps: "",
   count: -1,
   has: false,
   score: -1,
   hp: -1,
   flags: -1,
-  lines: [] as string[],
+  lines: [],
   dead: "",
   deadKey: -1,
 };
@@ -192,8 +210,13 @@ function hudLines(scene: Scene, metrics: HudMetrics): string[] {
   const score = me ? me.c : -1;
   const hp = me ? me.a : -1;
   if (
-    metrics.stepsPerSecond !== hud.steps || metrics.fps !== hud.fps || count !== hud.count ||
-    Boolean(me) !== hud.has || score !== hud.score || hp !== hud.hp || flags !== hud.flags
+    metrics.stepsPerSecond !== hud.steps ||
+    metrics.fps !== hud.fps ||
+    count !== hud.count ||
+    Boolean(me) !== hud.has ||
+    score !== hud.score ||
+    hp !== hud.hp ||
+    flags !== hud.flags
   ) {
     hud.steps = metrics.stepsPerSecond;
     hud.fps = metrics.fps;
@@ -202,7 +225,11 @@ function hudLines(scene: Scene, metrics: HudMetrics): string[] {
     hud.score = score;
     hud.hp = hp;
     hud.flags = flags;
-    hud.lines = [`Steps/s: ${metrics.stepsPerSecond}`, `FPS: ${metrics.fps}`, `Entities: ${count}`];
+    hud.lines = [
+      `Steps/s: ${metrics.stepsPerSecond}`,
+      `FPS: ${metrics.fps}`,
+      `Entities: ${count}`,
+    ];
     if (me) {
       hud.lines.push(
         `Score: ${me.c}`,
@@ -225,7 +252,8 @@ function drawHud(
   ctx.fillStyle = "#ffffff";
   ctx.textAlign = "left";
   const lines = hudLines(scene, metrics);
-  for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i] ?? "", 20, 30 + i * 20);
+  for (let i = 0; i < lines.length; i++)
+    ctx.fillText(lines[i] ?? "", 20, 30 + i * 20);
 
   if (me && me.flags & DEAD) {
     ctx.textAlign = "center";

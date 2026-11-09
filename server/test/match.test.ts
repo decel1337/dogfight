@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { test } from "vitest";
-import { runningHash } from "./match-helpers.ts";
 import type { InputMessage } from "@dogfight/shared/protocol";
+import { seqNo as asSeq, tick as asTick } from "@dogfight/shared/types";
+import { test } from "vitest";
 import { Match, type MatchFrame } from "../src/match.ts";
 import { RoomManager } from "../src/rooms.ts";
+import { runningHash } from "./match-helpers.ts";
 
 function makeMatch(seed = 5) {
   const rooms = new RoomManager({ maxRooms: 5, maxPlayers: 4, idleMs: 60_000 });
@@ -16,8 +17,8 @@ function makeMatch(seed = 5) {
 
 const inp = (seq: number, o: Partial<InputMessage> = {}): InputMessage => ({
   type: "input",
-  seq,
-  tick: 0,
+  seq: asSeq(seq),
+  tick: asTick(0),
   thrust: 0,
   turn: 0,
   fire: 0,
@@ -48,8 +49,10 @@ test("match: input рухає корабель, ack = останній обро�
 test("match: speed-hack (100 input за раз) не прискорює корабель", () => {
   const honest = makeMatch(9);
   const cheat = makeMatch(9);
-  for (let i = 1; i <= 50; i++) honest.match.receiveInput(honest.player.id, inp(i, { thrust: 1 }));
-  for (let i = 1; i <= 500; i++) cheat.match.receiveInput(cheat.player.id, inp(i, { thrust: 1 }));
+  for (let i = 1; i <= 50; i++)
+    honest.match.receiveInput(honest.player.id, inp(i, { thrust: 1 }));
+  for (let i = 1; i <= 500; i++)
+    cheat.match.receiveInput(cheat.player.id, inp(i, { thrust: 1 }));
   for (let t = 0; t < 10; t++) {
     honest.match.tick();
     cheat.match.tick();

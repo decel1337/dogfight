@@ -1,7 +1,6 @@
 // Протокол живе в @dogfight/shared: клієнт і сервер імпортують ОДНЕ й те саме,
 // тож розбіжність версій чи розкладки неможлива фізично.
 import { CodecError, decodeBinary } from "@dogfight/shared/codec";
-import { assertNever } from "@dogfight/shared/types";
 import {
   CLOSE,
   type ClientMessage,
@@ -11,9 +10,10 @@ import {
   PROTOCOL_VERSION,
   type ServerMessage,
 } from "@dogfight/shared/protocol";
+import { assertNever } from "@dogfight/shared/types";
 
-export { CLOSE, PROTOCOL_VERSION, encode };
 export type { ClientMessage, ServerMessage };
+export { CLOSE, encode, PROTOCOL_VERSION };
 
 // Коди закриття, після яких перепідключення марне: повторний запит дасть
 // ту саму відмову (некоректне повідомлення, немає кімнати, кімната повна).

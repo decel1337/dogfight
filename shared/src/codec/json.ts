@@ -66,7 +66,11 @@ export function decodeJson(text: string): GameMessage {
   const parsed = GameMessageSchema.safeParse(json);
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
-    throw new CodecError(issue ? `${issue.path.join(".")}: ${issue.message}` : "некоректне повідомлення");
+    throw new CodecError(
+      issue
+        ? `${issue.path.join(".")}: ${issue.message}`
+        : "некоректне повідомлення",
+    );
   }
   return parsed.data;
 }

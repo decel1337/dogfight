@@ -118,7 +118,8 @@ export class Ticker {
     }
     const took = this.#samples.map((s) => s.took).sort((a, b) => a - b);
     const late = this.#samples.map((s) => s.lateness).sort((a, b) => a - b);
-    const avg = (xs: number[]): number => xs.reduce((a, b) => a + b, 0) / xs.length;
+    const avg = (xs: number[]): number =>
+      xs.reduce((a, b) => a + b, 0) / xs.length;
     const q = (xs: number[], p: number): number =>
       xs[Math.min(xs.length - 1, Math.floor(xs.length * p))] ?? 0;
     const round = (v: number): number => Math.round(v * 1000) / 1000;
@@ -127,8 +128,16 @@ export class Ticker {
       skipped: this.skipped,
       samples: n,
       tickMs: this.tickMs,
-      workMs: { avg: round(avg(took)), p99: round(q(took, 0.99)), max: round(took[n - 1] ?? 0) },
-      jitterMs: { avg: round(avg(late)), p99: round(q(late, 0.99)), max: round(late[n - 1] ?? 0) },
+      workMs: {
+        avg: round(avg(took)),
+        p99: round(q(took, 0.99)),
+        max: round(took[n - 1] ?? 0),
+      },
+      jitterMs: {
+        avg: round(avg(late)),
+        p99: round(q(late, 0.99)),
+        max: round(late[n - 1] ?? 0),
+      },
     };
   }
 }

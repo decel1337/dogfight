@@ -37,7 +37,12 @@ describe("Ticker на фейкових таймерах", () => {
     vi.useFakeTimers();
     let clock = 0;
     let ticks = 0;
-    const ticker = new Ticker({ tickMs: 10, maxCatchUp: 3, onTick: () => ticks++, now: () => clock });
+    const ticker = new Ticker({
+      tickMs: 10,
+      maxCatchUp: 3,
+      onTick: () => ticks++,
+      now: () => clock,
+    });
     ticker.start();
     clock = 500; // процес «завис» на 500 мс = 50 тиків боргу
     vi.advanceTimersByTime(10);
@@ -50,24 +55,27 @@ describe("heartbeat на фейкових таймерах", () => {
   test("мертвий клієнт розривається після MAX_MISSED_PONGS інтервалів, живий — ні", async () => {
     // Фейкуємо лише інтервали: мережевий ввід-вивід лишається справжнім.
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
-    await withApp({ HEARTBEAT_MS: "15000", MAX_MISSED_PONGS: "2" }, async (ctx) => {
-      const room = await createRoom(ctx);
-      const alive = connect(ctx.wsUrl);
-      const dead = connect(ctx.wsUrl, { autoPong: false });
-      await Promise.all([alive.opened, dead.opened]);
-      alive.send({ type: "join", room: room.id, name: "Alive" });
-      dead.send({ type: "join", room: room.id, name: "Dead" });
-      await alive.next("joined");
-      await dead.next("joined");
+    await withApp(
+      { HEARTBEAT_MS: "15000", MAX_MISSED_PONGS: "2" },
+      async (ctx) => {
+        const room = await createRoom(ctx);
+        const alive = connect(ctx.wsUrl);
+        const dead = connect(ctx.wsUrl, { autoPong: false });
+        await Promise.all([alive.opened, dead.opened]);
+        alive.send({ type: "join", room: room.id, name: "Alive" });
+        dead.send({ type: "join", room: room.id, name: "Dead" });
+        await alive.next("joined");
+        await dead.next("joined");
 
-      // Інтервал 1: ping надіслано. Інтервал 2: пропущено 1 (< 2). Інтервал 3: 2 -> terminate.
-      for (let interval = 1; interval <= 3; interval++) {
-        vi.advanceTimersByTime(15_000);
-        await sleep(40); // даємо живому клієнтові справжній час відповісти pong
-      }
-      const closed = await dead.closed;
-      expect(closed.code).toBe(1006);
-      expect(alive.ws.readyState).toBe(alive.ws.OPEN);
-    });
+        // Інтервал 1: ping надіслано. Інтервал 2: пропущено 1 (< 2). Інтервал 3: 2 -> terminate.
+        for (let interval = 1; interval <= 3; interval++) {
+          vi.advanceTimersByTime(15_000);
+          await sleep(40); // даємо живому клієнтові справжній час відповісти pong
+        }
+        const closed = await dead.closed;
+        expect(closed.code).toBe(1006);
+        expect(alive.ws.readyState).toBe(alive.ws.OPEN);
+      },
+    );
   });
 });

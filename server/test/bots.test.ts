@@ -1,13 +1,18 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
+import { validateBotCount } from "../src/app.ts";
 import { BotPool, MAX_BOTS } from "../src/bots.ts";
 import { Match } from "../src/match.ts";
 import { Room } from "../src/rooms.ts";
-import { validateBotCount } from "../src/app.ts";
 import { createRoom, sleep, withApp } from "./helpers.ts";
 
 function makeMatch(): Match {
-  const room = new Room({ id: "r-1", name: "t", maxPlayers: 4, arena: { width: 1200, height: 800 } });
+  const room = new Room({
+    id: "r-1",
+    name: "t",
+    maxPlayers: 4,
+    arena: { width: 1200, height: 800 },
+  });
   return new Match({ room, seed: 7 });
 }
 
@@ -49,7 +54,14 @@ test("пул не перевищує MAX_BOTS", () => {
 
 test("validateBotCount відхиляє сміття", () => {
   assert.equal(validateBotCount({ count: 8 }), 8);
-  for (const bad of [null, {}, { count: 0 }, { count: 1.5 }, { count: "8" }, { count: MAX_BOTS + 1 }]) {
+  for (const bad of [
+    null,
+    {},
+    { count: 0 },
+    { count: 1.5 },
+    { count: "8" },
+    { count: MAX_BOTS + 1 },
+  ]) {
     assert.throws(() => validateBotCount(bad), { status: 400 });
   }
 });
@@ -59,19 +71,35 @@ test("POST /api/rooms/:id/bots додає ботів, DELETE прибирає, 4
     const room = await createRoom(ctx);
     const url = `${ctx.http}/api/rooms/${room.id}/bots`;
     const post = (body: unknown) =>
-      fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
 
     const ok = await post({ count: 5 });
     assert.equal(ok.status, 200);
     assert.deepEqual(await ok.json(), { bots: 5 });
     await sleep(150);
-    const stats = (await (await fetch(`${ctx.http}/api/stats`)).json()) as { matches: { players: number; tick: number }[] };
+    const stats = (await (await fetch(`${ctx.http}/api/stats`)).json()) as {
+      matches: { players: number; tick: number }[];
+    };
     assert.equal(stats.matches[0]?.players, 5);
     assert.ok((stats.matches[0]?.tick ?? 0) > 0, "матч стартував без людей");
 
     assert.equal((await post({ count: 0 })).status, 400);
-    assert.equal((await fetch(`${ctx.http}/api/rooms/r-nope/bots`, { method: "POST", body: "{}" })).status, 404);
+    assert.equal(
+      (
+        await fetch(`${ctx.http}/api/rooms/r-nope/bots`, {
+          method: "POST",
+          body: "{}",
+        })
+      ).status,
+      404,
+    );
     assert.equal((await fetch(url)).status, 405);
-    assert.deepEqual(await (await fetch(url, { method: "DELETE" })).json(), { bots: 0 });
+    assert.deepEqual(await (await fetch(url, { method: "DELETE" })).json(), {
+      bots: 0,
+    });
   });
 });

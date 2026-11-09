@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { Vector2, normalizeAngle } from "../src/sim/index.ts";
+import { normalizeAngle, Vector2 } from "../src/sim/index.ts";
 
 describe("Vector2", () => {
   test("add / sub / scale повертають нові вектори й не змінюють операнди", () => {
@@ -37,7 +37,9 @@ describe("Vector2", () => {
 
   test("dot і lerp", () => {
     expect(new Vector2(1, 2).dot(new Vector2(3, 4))).toBe(11);
-    expect(new Vector2(0, 0).lerp(new Vector2(10, 20), 0.25)).toEqual(new Vector2(2.5, 5));
+    expect(new Vector2(0, 0).lerp(new Vector2(10, 20), 0.25)).toEqual(
+      new Vector2(2.5, 5),
+    );
   });
 
   test("fromAngle дає одиничний вектор у потрібному напрямку", () => {

@@ -1,21 +1,26 @@
+import { seqNo as asSeq, tick as asTick } from "@dogfight/shared/types";
 import fc from "fast-check";
 import { describe, expect, test } from "vitest";
 import {
   CodecError,
+  decodeBinary,
   EVENT_SIZE,
   EVENTS_HEADER,
-  INPUT_SIZE,
-  RECORD_SIZE,
-  SNAPSHOT_HEADER,
-  decodeBinary,
   encodeBinary,
   encodeInput,
   encodeSnapshot,
-  withAck,
+  INPUT_SIZE,
   parseClientBinary,
+  RECORD_SIZE,
+  SNAPSHOT_HEADER,
+  withAck,
 } from "../src/codec/index.ts";
 import { DT } from "../src/constants.ts";
-import { type InputMessage, encode, parseClientMessage } from "../src/protocol/index.ts";
+import {
+  encode,
+  type InputMessage,
+  parseClientMessage,
+} from "../src/protocol/index.ts";
 import type { EntityRecord } from "../src/sim/index.ts";
 import { integrate, normalizeAngle } from "../src/sim/index.ts";
 import { entityId } from "../src/types.ts";
@@ -37,8 +42,16 @@ const inputArb: fc.Arbitrary<InputMessage> = fc.record({
 });
 
 const ARENA = { width: 1200, height: 800 };
-const coord = (max: number) => fc.double({ min: 0, max, noNaN: true, noDefaultInfinity: true }).filter((v) => v < max);
-const speed = fc.double({ min: -600, max: 600, noNaN: true, noDefaultInfinity: true });
+const coord = (max: number) =>
+  fc
+    .double({ min: 0, max, noNaN: true, noDefaultInfinity: true })
+    .filter((v) => v < max);
+const speed = fc.double({
+  min: -600,
+  max: 600,
+  noNaN: true,
+  noDefaultInfinity: true,
+});
 
 const recordArb: fc.Arbitrary<EntityRecord> = fc.record({
   id: fc.integer({ min: 0, max: 0xffff }).map(entityId),
@@ -79,22 +92,44 @@ describe("властивості кодека", () => {
 
   test("довжина кадру визначається лише типом і кількістю записів", () => {
     fc.assert(
-      fc.property(inputArb, fc.array(recordArb, { maxLength: 40 }), (input, entities) => {
-        expect(encodeBinary(input).byteLength).toBe(INPUT_SIZE);
-        const snapshot = encodeBinary({ type: "snapshot", tick: 1, ack: 2, entities });
-        expect(snapshot.byteLength).toBe(SNAPSHOT_HEADER + entities.length * RECORD_SIZE);
-        const events = entities.map((e) => ({ kind: 1 as const, id: e.id, x: e.x, y: e.y }));
-        expect(encodeBinary({ type: "events", tick: 1, events }).byteLength).toBe(
-          EVENTS_HEADER + events.length * EVENT_SIZE,
-        );
-      }),
+      fc.property(
+        inputArb,
+        fc.array(recordArb, { maxLength: 40 }),
+        (input, entities) => {
+          expect(encodeBinary(input).byteLength).toBe(INPUT_SIZE);
+          const snapshot = encodeBinary({
+            type: "snapshot",
+            tick: asTick(1),
+            ack: asSeq(2),
+            entities,
+          });
+          expect(snapshot.byteLength).toBe(
+            SNAPSHOT_HEADER + entities.length * RECORD_SIZE,
+          );
+          const events = entities.map((e) => ({
+            kind: 1 as const,
+            id: e.id,
+            x: e.x,
+            y: e.y,
+          }));
+          expect(
+            encodeBinary({ type: "events", tick: asTick(1), events })
+              .byteLength,
+          ).toBe(EVENTS_HEADER + events.length * EVENT_SIZE);
+        },
+      ),
     );
   });
 
   test("снапшот після квантування стабільний: encode∘decode∘encode == encode", () => {
     fc.assert(
       fc.property(fc.array(recordArb, { maxLength: 20 }), (entities) => {
-        const once = encodeBinary({ type: "snapshot", tick: 7, ack: 3, entities });
+        const once = encodeBinary({
+          type: "snapshot",
+          tick: asTick(7),
+          ack: asSeq(3),
+          entities,
+        });
         const twice = encodeBinary(decodeBinary(once));
         expect(Array.from(twice)).toEqual(Array.from(once));
       }),
@@ -133,7 +168,9 @@ describe("властивості JSON-парсера", () => {
     fc.assert(
       fc.property(
         inputArb,
-        fc.integer({ min: -1_000_000, max: 1_000_000 }).filter((n) => n < -1 || n > 1),
+        fc
+          .integer({ min: -1_000_000, max: 1_000_000 })
+          .filter((n) => n < -1 || n > 1),
         (msg, badTurn) => {
           const raw = JSON.stringify({ ...msg, v: 1, turn: badTurn });
           expect(parseClientMessage(raw, { maxBytes: 4096 }).ok).toBe(false);
@@ -156,36 +193,47 @@ describe("властивості JSON-парсера", () => {
 describe("властивості симуляції", () => {
   test("рух по тору: з будь-якого стану й керування корабель лишається в арені", () => {
     fc.assert(
-      fc.property(shipStateArb, fc.array(controlsArb, { minLength: 1, maxLength: 60 }), (start, inputs) => {
-        let state = start;
-        for (const input of inputs) {
-          state = { ...integrate(state, input, DT, ARENA) };
-          expect(state.x).toBeGreaterThanOrEqual(0);
-          expect(state.x).toBeLessThan(ARENA.width);
-          expect(state.y).toBeGreaterThanOrEqual(0);
-          expect(state.y).toBeLessThan(ARENA.height);
-          expect(Number.isFinite(state.vx) && Number.isFinite(state.vy)).toBe(true);
-        }
-      }),
+      fc.property(
+        shipStateArb,
+        fc.array(controlsArb, { minLength: 1, maxLength: 60 }),
+        (start, inputs) => {
+          let state = start;
+          for (const input of inputs) {
+            state = { ...integrate(state, input, DT, ARENA) };
+            expect(state.x).toBeGreaterThanOrEqual(0);
+            expect(state.x).toBeLessThan(ARENA.width);
+            expect(state.y).toBeGreaterThanOrEqual(0);
+            expect(state.y).toBeLessThan(ARENA.height);
+            expect(Number.isFinite(state.vx) && Number.isFinite(state.vy)).toBe(
+              true,
+            );
+          }
+        },
+      ),
     );
   });
 
   test("integrate чиста: однаковий вхід -> однаковий вихід", () => {
     fc.assert(
       fc.property(shipStateArb, controlsArb, (state, input) => {
-        expect(integrate(state, input, DT, ARENA)).toEqual(integrate(state, input, DT, ARENA));
+        expect(integrate(state, input, DT, ARENA)).toEqual(
+          integrate(state, input, DT, ARENA),
+        );
       }),
     );
   });
 
   test("normalizeAngle: результат у [-π, π] і еквівалентний за sin/cos", () => {
     fc.assert(
-      fc.property(fc.double({ min: -1000, max: 1000, noNaN: true }), (angle) => {
-        const n = normalizeAngle(angle);
-        expect(Math.abs(n)).toBeLessThanOrEqual(Math.PI + 1e-9);
-        expect(Math.sin(n)).toBeCloseTo(Math.sin(angle), 6);
-        expect(Math.cos(n)).toBeCloseTo(Math.cos(angle), 6);
-      }),
+      fc.property(
+        fc.double({ min: -1000, max: 1000, noNaN: true }),
+        (angle) => {
+          const n = normalizeAngle(angle);
+          expect(Math.abs(n)).toBeLessThanOrEqual(Math.PI + 1e-9);
+          expect(Math.sin(n)).toBeCloseTo(Math.sin(angle), 6);
+          expect(Math.cos(n)).toBeCloseTo(Math.cos(angle), 6);
+        },
+      ),
     );
   });
 });
@@ -212,8 +260,18 @@ test("property: withAck(encode(ack=0), a) == encode(ack=a) для будь-як�
         { maxLength: 20 },
       ),
       (tick, ack, entities) => {
-        const base = encodeSnapshot({ type: "snapshot", tick, ack: 0, entities } as never);
-        const direct = encodeSnapshot({ type: "snapshot", tick, ack, entities } as never);
+        const base = encodeSnapshot({
+          type: "snapshot",
+          tick,
+          ack: 0,
+          entities,
+        } as never);
+        const direct = encodeSnapshot({
+          type: "snapshot",
+          tick,
+          ack,
+          entities,
+        } as never);
         const patched = withAck(base, ack);
         expect(patched).toEqual(direct);
         expect(base[5]).toBe(0); // базовий буфер не змінюється

@@ -1,6 +1,6 @@
-import { cos, sin } from "./dmath.ts";
 import { SHIP } from "../constants.ts";
 import type { Arena } from "../types.ts";
+import { cos, sin } from "./dmath.ts";
 import { normalizeAngle } from "./vector.ts";
 
 // Керування одного кроку: те, що гравець «натиснув».

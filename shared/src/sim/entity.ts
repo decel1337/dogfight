@@ -1,8 +1,8 @@
 import { DT } from "../constants.ts";
-import { NO_ENTITY, type EntityId } from "../types.ts";
+import { type EntityId, NO_ENTITY } from "../types.ts";
 import type { AnyEntity } from "./entities.ts";
-import type { World } from "./world.ts";
 import { Vector2 } from "./vector.ts";
+import type { World } from "./world.ts";
 
 // Числові коди видів сутностей для снапшота (u8).
 export const KIND = { ship: 1, bullet: 2, asteroid: 3, pickup: 4 } as const;

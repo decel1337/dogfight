@@ -1,17 +1,28 @@
 import assert from "node:assert/strict";
+import { seqNo as asSeq, tick as asTick } from "@dogfight/shared/types";
 import { test } from "vitest";
 import { DT, TICK_MS } from "../src/constants.ts";
 import {
-  Predictor,
-  ServerClock,
-  SampleScratch,
-  SnapshotBuffer,
   lerpWrap,
+  Predictor,
+  SampleScratch,
+  ServerClock,
+  SnapshotBuffer,
   shortestDelta,
 } from "../src/netcode/index.ts";
-import { type EntityRecord, type Integrate, integrate, type ShipState } from "../src/sim/index.ts";
+import {
+  type EntityRecord,
+  type Integrate,
+  integrate,
+  type ShipState,
+} from "../src/sim/index.ts";
 import { entityId } from "../src/types.ts";
-import { advance, makeWorld, type ScriptedInput, scriptedInput } from "./helpers.ts";
+import {
+  advance,
+  makeWorld,
+  type ScriptedInput,
+  scriptedInput,
+} from "./helpers.ts";
 
 const ARENA = { width: 1200, height: 800 };
 
@@ -56,7 +67,7 @@ function rig({
 
   const first = world.snapshot().entities.find((e) => e.id === ship.id);
   assert.ok(first);
-  predictor.reconcile(first, 0);
+  predictor.reconcile(first, asSeq(0));
 
   for (let step = 0; step < steps; step++) {
     // клієнт: передбачає й відправляє input
@@ -78,9 +89,13 @@ function rig({
     const own = world.snapshot().entities.find((e) => e.id === ship.id);
     assert.ok(own);
     downstream.push({ at: step + latencyTicks, rec: own, ack: acked });
-    for (let next = downstream[0]; next && next.at <= step; next = downstream[0]) {
+    for (
+      let next = downstream[0];
+      next && next.at <= step;
+      next = downstream[0]
+    ) {
       downstream.shift();
-      corrections.push(predictor.reconcile(next.rec, next.ack));
+      corrections.push(predictor.reconcile(next.rec, asSeq(next.ack)));
     }
   }
   return { corrections, predictor, ship, world };
@@ -99,8 +114,12 @@ test("реконсиляція: якщо клієнтський integrate нед
   };
   const clean = rig({ steps: 150 }).corrections;
   const broken = rig({ steps: 150, clientIntegrate: noisy }).corrections;
-  const mean = (xs: number[]): number => xs.reduce((a, b) => a + b, 0) / xs.length;
-  assert.ok(mean(broken) > mean(clean) * 100, `${mean(broken)} проти ${mean(clean)}`);
+  const mean = (xs: number[]): number =>
+    xs.reduce((a, b) => a + b, 0) / xs.length;
+  assert.ok(
+    mean(broken) > mean(clean) * 100,
+    `${mean(broken)} проти ${mean(clean)}`,
+  );
 });
 
 test("реконсиляція: втрата input дає поправку, але вона зникає", () => {
@@ -110,18 +129,26 @@ test("реконсиляція: втрата input дає поправку, ал
 
 test("реконсиляція (розбір із завдання): снапшот tick 100 підтверджує seq 57, буфер 55–61", () => {
   const predictor = new Predictor({ arena: ARENA });
-  const base = { x: 100, y: 100, vx: 0, vy: 0, angle: 0, cooldown: 0, rapid: false };
+  const base = {
+    x: 100,
+    y: 100,
+    vx: 0,
+    vy: 0,
+    angle: 0,
+    cooldown: 0,
+    rapid: false,
+  };
   predictor.state = { ...base, thrusting: false, dead: false };
   predictor.prev = predictor.state;
   predictor.pending = [55, 56, 57, 58, 59, 60, 61].map((seq) => ({
-    seq,
+    seq: asSeq(seq),
     thrust: 1,
     turn: 0,
     fire: 0,
   }));
 
   const server = rec({ x: 150, y: 100, vx: 30 });
-  predictor.reconcile(server, 57);
+  predictor.reconcile(server, asSeq(57));
 
   assert.deepEqual(
     predictor.pending.map((p) => p.seq),
@@ -139,18 +166,29 @@ test("реконсиляція (розбір із завдання): снапш�
 
 test("поправка згладжується й затухає за ~100 мс; велика — не згладжується", () => {
   const predictor = new Predictor({ arena: ARENA, smoothingMs: 100 });
-  const base = { x: 100, y: 100, vx: 0, vy: 0, angle: 0, cooldown: 0, rapid: false };
+  const base = {
+    x: 100,
+    y: 100,
+    vx: 0,
+    vy: 0,
+    angle: 0,
+    cooldown: 0,
+    rapid: false,
+  };
   predictor.state = { ...base, thrusting: false, dead: false };
   predictor.prev = predictor.state;
-  predictor.reconcile(rec({ x: 110, y: 100 }), 0);
+  predictor.reconcile(rec({ x: 110, y: 100 }), asSeq(0));
   assert.equal(predictor.lastCorrection, 10);
   assert.ok(Math.abs(predictor.offset.x - -10) < 1e-9, "малюємо там, де були");
   assert.equal(Math.round(predictor.renderState(1)?.x ?? NaN), 100);
 
   for (let i = 0; i < 6; i++) predictor.decay(1 / 60); // 100 мс
-  assert.ok(Math.abs(predictor.offset.x) < 0.7, `залишилось ${predictor.offset.x}`);
+  assert.ok(
+    Math.abs(predictor.offset.x) < 0.7,
+    `залишилось ${predictor.offset.x}`,
+  );
 
-  predictor.reconcile(rec({ x: 700, y: 100 }), 0);
+  predictor.reconcile(rec({ x: 700, y: 100 }), asSeq(0));
   assert.deepEqual(predictor.offset, { x: 0, y: 0 }, "великий розрив — snap");
 });
 
@@ -168,19 +206,19 @@ test("поправка рахується через шов тору", () => {
     dead: false,
   };
   predictor.prev = predictor.state;
-  predictor.reconcile(rec({ x: 1, y: 100 }), 0);
+  predictor.reconcile(rec({ x: 1, y: 100 }), asSeq(0));
   assert.ok(Math.abs(predictor.lastCorrection - 2) < 1e-9);
 });
 
 test("передбачена куля: з'являється одразу, підтверджується серверною, зникає разом із нею", () => {
   const predictor = new Predictor({ arena: ARENA });
-  predictor.reconcile(rec({ x: 300, y: 300 }), 0);
+  predictor.reconcile(rec({ x: 300, y: 300 }), asSeq(0));
   const { bullet } = predictor.step({ thrust: 0, turn: 0, fire: 1 });
   assert.ok(bullet, "куля одразу");
   assert.equal(predictor.bullets.length, 1);
 
   // Снапшот ще не підтвердив (ack < seq): куля лишається.
-  predictor.syncBullets([], 0, entityId(5));
+  predictor.syncBullets([], asSeq(0), entityId(5));
   assert.equal(predictor.bullets.length, 1);
 
   // Сервер створив кулю з тим самим тегом.
@@ -190,13 +228,13 @@ test("передбачена куля: з'являється одразу, пі�
   assert.equal(predictor.bullets[0]?.serverId, 40);
 
   // Сервер видалив кулю (влучання): локальна копія зникає.
-  claimed = predictor.syncBullets([], bullet.seq + 1, entityId(5));
+  claimed = predictor.syncBullets([], asSeq(bullet.seq + 1), entityId(5));
   assert.equal(predictor.bullets.length, 0);
 });
 
 test("передбачена куля, яку сервер не створив (cooldown/втрата), прибирається за ack", () => {
   const predictor = new Predictor({ arena: ARENA });
-  predictor.reconcile(rec({ x: 300, y: 300 }), 0);
+  predictor.reconcile(rec({ x: 300, y: 300 }), asSeq(0));
   const { bullet } = predictor.step({ thrust: 0, turn: 0, fire: 1 });
   assert.ok(bullet);
   predictor.syncBullets([], bullet.seq, entityId(5));
@@ -206,8 +244,8 @@ test("передбачена куля, яку сервер не створив (
 test("SnapshotBuffer: інтерполяція між двома снапшотами", () => {
   const buf = new SnapshotBuffer();
   const e = (x: number): EntityRecord[] => [rec({ x, y: 10 })];
-  buf.push({ tick: 10, ack: 0, entities: e(100) });
-  buf.push({ tick: 12, ack: 0, entities: e(200) });
+  buf.push({ tick: asTick(10), ack: asSeq(0), entities: e(100) });
+  buf.push({ tick: asTick(12), ack: asSeq(0), entities: e(200) });
   const out = buf.sample(11, ARENA);
   assert.equal(out.mode, "interpolating");
   assert.equal(out.entities[0]?.x, 150);
@@ -216,40 +254,59 @@ test("SnapshotBuffer: інтерполяція між двома снапшот�
 
 test("SnapshotBuffer: переупорядковані й дубльовані снапшоти", () => {
   const buf = new SnapshotBuffer();
-  const mk = (tick: number) => ({ tick, ack: 0, entities: [] });
+  const mk = (tick: number) => ({
+    tick: asTick(tick),
+    ack: asSeq(0),
+    entities: [],
+  });
   assert.equal(buf.push(mk(12)), true);
   assert.equal(buf.push(mk(10)), true, "запізнілий вставляється на своє місце");
   assert.equal(buf.push(mk(12)), false, "дубль відкинуто");
-  assert.deepEqual(buf.snaps.map((s) => s.tick), [10, 12]);
+  assert.deepEqual(
+    buf.snaps.map((s) => s.tick),
+    [10, 12],
+  );
 });
 
 test("SnapshotBuffer: сутність, що з'являється/зникає між снапшотами", () => {
   const buf = new SnapshotBuffer();
-  const bullet = (id: number, x: number): EntityRecord => rec({ id: entityId(id), kind: 2, x });
-  buf.push({ tick: 10, ack: 0, entities: [bullet(1, 0)] });
-  buf.push({ tick: 12, ack: 0, entities: [bullet(2, 50)] });
+  const bullet = (id: number, x: number): EntityRecord =>
+    rec({ id: entityId(id), kind: 2, x });
+  buf.push({ tick: asTick(10), ack: asSeq(0), entities: [bullet(1, 0)] });
+  buf.push({ tick: asTick(12), ack: asSeq(0), entities: [bullet(2, 50)] });
 
   const mid = buf.sample(11, ARENA);
-  assert.deepEqual(mid.entities.map((e) => e.id), [1], "id 1 ще малюється, id 2 ще ні");
+  assert.deepEqual(
+    mid.entities.map((e) => e.id),
+    [1],
+    "id 1 ще малюється, id 2 ще ні",
+  );
 
   const after = buf.sample(12, ARENA);
-  assert.deepEqual(after.entities.map((e) => e.id), [2], "id 1 зник, id 2 з'явився");
+  assert.deepEqual(
+    after.entities.map((e) => e.id),
+    [2],
+    "id 1 зник, id 2 з'явився",
+  );
 });
 
 test("SnapshotBuffer: інтерполяція через шов тору й екстраполяція", () => {
   const buf = new SnapshotBuffer();
   const at = (x: number, vx = 0): EntityRecord[] => [rec({ x, vx })];
-  buf.push({ tick: 10, ack: 0, entities: at(1190) });
-  buf.push({ tick: 12, ack: 0, entities: at(10) });
+  buf.push({ tick: asTick(10), ack: asSeq(0), entities: at(1190) });
+  buf.push({ tick: asTick(12), ack: asSeq(0), entities: at(10) });
   const x = buf.sample(11, ARENA).entities[0]?.x ?? NaN;
   assert.ok(Math.abs(x - 0) < 1e-9 || Math.abs(x - 1200) < 1e-9, `x=${x}`);
 
   const ext = new SnapshotBuffer();
-  ext.push({ tick: 10, ack: 0, entities: at(100, 30) });
+  ext.push({ tick: asTick(10), ack: asSeq(0), entities: at(100, 30) });
   const out = ext.sample(12, ARENA);
   assert.equal(out.mode, "extrapolating");
   assert.ok(Math.abs((out.entities[0]?.x ?? NaN) - (100 + 30 * DT * 2)) < 1e-9);
-  assert.ok((ext.sample(100, ARENA).entities[0]?.x ?? NaN) < 100 + 30 * DT * 5, "екстраполяція обмежена");
+  assert.ok(
+    (ext.sample(100, ARENA).entities[0]?.x ?? NaN) < 100 + 30 * DT * 5,
+    "екстраполяція обмежена",
+  );
 });
 
 test("ServerClock: джитер не смикає годинник, мінімум задає базу", () => {
@@ -257,9 +314,12 @@ test("ServerClock: джитер не смикає годинник, мініму
   const base = 5000;
   for (let tick = 0; tick < 60; tick++) {
     const jitter = tick % 5 === 0 ? 0 : 20 + (tick % 3) * 5;
-    clock.observe(tick, base + tick * TICK_MS + jitter);
+    clock.observe(asTick(tick), base + tick * TICK_MS + jitter);
   }
-  assert.ok(Math.abs((clock.offset ?? NaN) - base) < 1e-6, `offset ${clock.offset}`);
+  assert.ok(
+    Math.abs((clock.offset ?? NaN) - base) < 1e-6,
+    `offset ${clock.offset}`,
+  );
   assert.ok(Math.abs(clock.serverTickAt(base + 30 * TICK_MS) - 30) < 1e-6);
 });
 
@@ -276,8 +336,8 @@ test("sampleInto == sample у всіх режимах, а записи пулу 
     rec({ id: entityId(1), x, y: 10, angle: 0.2 }),
     ...(withExtra ? [rec({ id: entityId(2), x: x + 5, y: 20 })] : []),
   ];
-  buf.push({ tick: 10, ack: 0, entities: frame(100, true) });
-  buf.push({ tick: 12, ack: 0, entities: frame(200, false) }); // сутність 2 зникає
+  buf.push({ tick: asTick(10), ack: asSeq(0), entities: frame(100, true) });
+  buf.push({ tick: asTick(12), ack: asSeq(0), entities: frame(200, false) }); // сутність 2 зникає
   let firstRecord: EntityRecord | undefined;
   for (const tick of [5, 10, 10.5, 11, 11.9, 12, 14, 100]) {
     const expected = buf.sample(tick, ARENA);
@@ -285,13 +345,18 @@ test("sampleInto == sample у всіх режимах, а записи пулу 
     assert.equal(mode, expected.mode, `mode @${tick}`);
     assert.deepEqual(scratch.entities, expected.entities, `entities @${tick}`);
     firstRecord ??= scratch.entities[0];
-    if (scratch.entities[0]) assert.equal(scratch.entities[0], firstRecord, "той самий об'єкт із пулу");
+    if (scratch.entities[0])
+      assert.equal(
+        scratch.entities[0],
+        firstRecord,
+        "той самий об'єкт із пулу",
+      );
   }
 });
 
 test("renderStateInto == renderState", () => {
   const p = new Predictor({ arena: ARENA });
-  p.reconcile(rec({ x: 300, y: 300 }), 0);
+  p.reconcile(rec({ x: 300, y: 300 }), asSeq(0));
   p.step({ thrust: 1, turn: 1, fire: 0 });
   const out = { x: 0, y: 0, angle: 0, thrusting: false };
   assert.equal(p.renderStateInto(0.5, out), true);
@@ -300,12 +365,19 @@ test("renderStateInto == renderState", () => {
 
 test("ServerClock (кільце): вікно відсікає старі зразки, переповнення не ламає оцінку", () => {
   const clock = new ServerClock({ windowMs: 1000, gain: 1 });
-  for (let t = 0; t < 100; t++) clock.observe(t, t * TICK_MS + 50); // «тремтіння» постійне: offset = 50
+  for (let t = 0; t < 100; t++) clock.observe(asTick(t), t * TICK_MS + 50); // «тремтіння» постійне: offset = 50
   assert.ok(Math.abs((clock.offset ?? NaN) - 50) < 1e-9);
-  assert.ok(clock.sampleCount <= 1000 / TICK_MS + 2, "зразки старші за вікно викинуто");
+  assert.ok(
+    clock.sampleCount <= 1000 / TICK_MS + 2,
+    "зразки старші за вікно викинуто",
+  );
 
   const big = new ServerClock({ windowMs: 1e9, gain: 1 });
-  for (let t = 0; t < 2000; t++) big.observe(t, t * TICK_MS + 20 + (t % 7));
+  for (let t = 0; t < 2000; t++)
+    big.observe(asTick(t), t * TICK_MS + 20 + (t % 7));
   assert.equal(big.sampleCount, 512, "кільце не росте понад ємність");
-  assert.ok(Math.abs((big.offset ?? NaN) - 20) < 1e-9, "мінімум за вікно знайдено");
+  assert.ok(
+    Math.abs((big.offset ?? NaN) - 20) < 1e-9,
+    "мінімум за вікно знайдено",
+  );
 });

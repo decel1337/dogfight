@@ -1,23 +1,24 @@
 import { DT } from "@dogfight/shared/constants";
+import type { CodecName } from "@dogfight/shared/protocol";
+import type { Controls } from "@dogfight/shared/sim";
 import { type LoadResult, loadAll } from "./assets/loader.ts";
 import { AudioManager } from "./audio/audio.ts";
+import { NetGame, type OutgoingGame } from "./game/netgame.ts";
 import { createInput } from "./input.ts";
+import type { JoinDetail } from "./lobby/lobby.ts";
 import { Lobby } from "./lobby/lobby.ts";
 import { createLobbyView } from "./lobby/lobbyView.ts";
-import { NetGame, type OutgoingGame } from "./game/netgame.ts";
-import type { JoinDetail } from "./lobby/lobby.ts";
 import { createLoop } from "./loop.ts";
-import { perfBegin, perfEnd } from "./perf.ts";
 import { createConnection } from "./net/connection.ts";
-import type { CodecName } from "@dogfight/shared/protocol";
-import { encode } from "./net/protocol.ts";
+import { CLOSE, encode } from "./net/protocol.ts";
+import { perfBegin, perfEnd } from "./perf.ts";
 import { beginFrame, setupCanvas } from "./render/canvas.ts";
 import { drawScene } from "./render/draw.ts";
-import type { Controls } from "@dogfight/shared/sim";
-import { query } from "./ui/dom.ts";
 import { createChatView } from "./ui/chatView.ts";
+import { query } from "./ui/dom.ts";
 import { drawNetgraph } from "./ui/netgraph.ts";
 import { createNetPanel } from "./ui/netPanel.ts";
+import { showServerNotice, showVersionStamp } from "./ui/notice.ts";
 
 const canvas = query(document, "#gameCanvas", HTMLCanvasElement);
 const { ctx, size } = setupCanvas(canvas);
@@ -39,7 +40,11 @@ function drawCenteredText(
   });
 }
 
-function drawLoading(done: number, total: number, current: string | null): void {
+function drawLoading(
+  done: number,
+  total: number,
+  current: string | null,
+): void {
   drawCenteredText([
     {
       text: `LOADING ASSETS: ${done}/${total}${current ? ` (${current})` : ""}`,
@@ -75,7 +80,11 @@ const settings = {
   codec,
   delay: num("delay", 2),
   graph: params.get("netgraph") === "1",
-  net: { latency: num("latency", 0), jitter: num("jitter", 0), drop: num("drop", 0) },
+  net: {
+    latency: num("latency", 0),
+    jitter: num("jitter", 0),
+    drop: num("drop", 0),
+  },
 };
 
 type Assets = LoadResult<ImageBitmap, AudioBuffer>;
@@ -99,7 +108,12 @@ function startGame({ room, playerName }: JoinDetail, assets: Assets): void {
   };
 
   const panel = createNetPanel({
-    initial: { net, predict: settings.predict, delay: settings.delay, graph: showGraph },
+    initial: {
+      net,
+      predict: settings.predict,
+      delay: settings.delay,
+      graph: showGraph,
+    },
     onNet: (value) => {
       net = value;
       conn.send({ type: "net", ...value });
@@ -126,7 +140,12 @@ function startGame({ room, playerName }: JoinDetail, assets: Assets): void {
   // Після кожного (пере)підключення сервер нас не пам'ятає — представляємось знову.
   conn.on("open", () => {
     chat.setStatus("Підключено");
-    conn.send({ type: "join", room: room.id, name: playerName, codec: settings.codec });
+    conn.send({
+      type: "join",
+      room: room.id,
+      name: playerName,
+      codec: settings.codec,
+    });
   });
   conn.on("joined", (msg) => {
     chat.addSystem(`Ви в кімнаті «${msg.room.name}»`);
@@ -140,7 +159,8 @@ function startGame({ room, playerName }: JoinDetail, assets: Assets): void {
         interpolationDelayTicks: settings.delay,
       },
     });
-    if (net.latency || net.jitter || net.drop) conn.send({ type: "net", ...net });
+    if (net.latency || net.jitter || net.drop)
+      conn.send({ type: "net", ...net });
   });
   conn.on("snapshot", (msg) => {
     const t0 = perfBegin();
@@ -152,15 +172,40 @@ function startGame({ room, playerName }: JoinDetail, assets: Assets): void {
   conn.on("roster", (msg) => chat.setRoster(msg.players));
   conn.on("chat", (msg) => chat.addMessage(msg));
   conn.on("error", (msg) => chat.addSystem(`Сервер: ${msg.message}`));
+  // Повернення в лобі = чистий перезапуск сторінки (стан гри, таймери, сокет).
+  const backToLobby = (): void => location.reload();
+  const giveUp = (message: string): void => {
+    game = null;
+    conn.close();
+    chat.setStatus(message);
+    showServerNotice(message, backToLobby);
+  };
+  // Скільки спроб перепідключення робимо, перш ніж здатись (≈ хвилина з backoff).
+  const MAX_RECONNECTS = 8;
+
+  conn.on("shutdown", (msg) => {
+    chat.addSystem(`Сервер перезапускається: ${msg.reason}`);
+    chat.setStatus("Сервер перезапускається…");
+  });
   conn.on("reconnecting", ({ attempt, delayMs }) => {
     game = null;
+    if (attempt > MAX_RECONNECTS) {
+      giveUp("Сервер недоступний. Спробуйте пізніше.");
+      return;
+    }
     chat.setStatus(`Зв'язок втрачено. Спроба ${attempt} через ${delayMs} мс`);
   });
   conn.on("close", ({ code, willRetry }) => {
-    if (!willRetry) {
-      game = null;
-      chat.setStatus(`Відключено (код ${code})`);
-    }
+    if (willRetry) return;
+    const message =
+      code === CLOSE.ROOM_NOT_FOUND
+        ? "Кімнату не знайдено (сервер міг перезапуститись)."
+        : code === CLOSE.ROOM_FULL
+          ? "Кімната заповнена."
+          : code === CLOSE.RATE_LIMITED
+            ? "Забагато повідомлень: з'єднання закрито."
+            : `Відключено (код ${code}).`;
+    giveUp(message);
   });
   conn.connect();
 
@@ -190,7 +235,13 @@ function startGame({ room, playerName }: JoinDetail, assets: Assets): void {
   };
 
   // Пропускна здатність для netgraph: різниця лічильників раз на секунду.
-  const rate = { at: performance.now(), inBytes: 0, outBytes: 0, downKBs: 0, upKBs: 0 };
+  const rate = {
+    at: performance.now(),
+    inBytes: 0,
+    outBytes: 0,
+    downKBs: 0,
+    upKBs: 0,
+  };
   const updateRate = (): void => {
     const now = performance.now();
     if (now - rate.at < 1000) return;
@@ -267,7 +318,8 @@ async function boot(): Promise<void> {
       `Ассети: ${assets.ms.toFixed(0)} мс (${SEQUENTIAL ? "по черзі" : "паралельно"})`,
     );
     for (const f of assets.failed) {
-      const reason = f.error instanceof Error ? f.error.message : String(f.error);
+      const reason =
+        f.error instanceof Error ? f.error.message : String(f.error);
       console.warn(`Не завантажено ${f.key} (${f.url}): ${reason}`);
     }
     audio.setBuffers(assets.sounds);
@@ -286,7 +338,15 @@ async function boot(): Promise<void> {
   }
 }
 
-drawCenteredText([
-  { text: "CLICK ANYWHERE TO START", font: "bold 24px monospace", dy: 0 },
-], "#00f0ff");
+void showVersionStamp();
+// Service worker лише в production-збірці: у dev він кешував би застарілі модулі Vite.
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/sw.js").catch((error: unknown) => {
+    console.warn("service worker не зареєстровано:", error);
+  });
+}
+drawCenteredText(
+  [{ text: "CLICK ANYWHERE TO START", font: "bold 24px monospace", dy: 0 }],
+  "#00f0ff",
+);
 window.addEventListener("click", boot, { once: true });

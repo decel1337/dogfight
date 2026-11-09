@@ -1,22 +1,54 @@
 import assert from "node:assert/strict";
-import { test } from "vitest";
 import { decodeBinary } from "@dogfight/shared/codec";
 import { TICK_MS } from "@dogfight/shared/constants";
 import type { SnapshotMessage } from "@dogfight/shared/protocol";
-import { type EntityRecord } from "@dogfight/shared/sim";
-import { entityId } from "@dogfight/shared/types";
-import { type NetOptions, NetGame, type OutgoingGame } from "../src/game/netgame.ts";
+import type { EntityRecord } from "@dogfight/shared/sim";
+import {
+  seqNo as asSeq,
+  tick as asTick,
+  entityId,
+} from "@dogfight/shared/types";
+import { test } from "vitest";
+import {
+  NetGame,
+  type NetOptions,
+  type OutgoingGame,
+} from "../src/game/netgame.ts";
 
 const ARENA = { width: 1200, height: 800 };
-type RecInit = Partial<Omit<EntityRecord, "id" | "kind">> & { id?: number; kind?: EntityRecord["kind"] };
+type RecInit = Partial<Omit<EntityRecord, "id" | "kind">> & {
+  id?: number;
+  kind?: EntityRecord["kind"];
+};
 const rec = ({ id = 1, ...o }: RecInit = {}): EntityRecord => ({
-  id: entityId(id), kind: 1, flags: 0, x: 600, y: 400, vx: 0, vy: 0, angle: 0, a: 3, b: 0, c: 0, ...o,
+  id: entityId(id),
+  kind: 1,
+  flags: 0,
+  x: 600,
+  y: 400,
+  vx: 0,
+  vy: 0,
+  angle: 0,
+  a: 3,
+  b: 0,
+  c: 0,
+  ...o,
 });
-const snap = (tick: number, ack: number, entities: EntityRecord[]): SnapshotMessage => ({
-  type: "snapshot", tick, ack, entities,
+const snap = (
+  tick: number,
+  ack: number,
+  entities: EntityRecord[],
+): SnapshotMessage => ({
+  type: "snapshot",
+  tick: asTick(tick),
+  ack: asSeq(ack),
+  entities,
 });
 
-function make(options: Partial<NetOptions> = {}, codec: "binary" | "json" = "binary") {
+function make(
+  options: Partial<NetOptions> = {},
+  codec: "binary" | "json" = "binary",
+) {
   const clock = { t: 1000 };
   const sent: OutgoingGame[] = [];
   const sounds: string[] = [];
@@ -100,14 +132,22 @@ test("дублікат снапшота ігнорується, старий н�
   game.onSnapshot(snap(5, 0, [rec({ x: 999 })]));
   assert.equal(game.ownRecord?.x, 500);
   game.onSnapshot(snap(3, 0, [rec({ x: 111 })]));
-  assert.equal(game.ownRecord?.x, 500, "перевпорядкований снапшот не перезаписує");
+  assert.equal(
+    game.ownRecord?.x,
+    500,
+    "перевпорядкований снапшот не перезаписує",
+  );
   assert.equal(game.snapshots, 2);
 });
 
 test("події показуються, коли час рендеру дійшов до їхнього тику", () => {
   const { game, clock, sounds } = make({ predict: false });
   game.onSnapshot(snap(10, 0, [rec()]));
-  game.onEvents({ type: "events", tick: 14, events: [{ kind: 3, id: entityId(7), x: 10, y: 10 }] });
+  game.onEvents({
+    type: "events",
+    tick: asTick(14),
+    events: [{ kind: 3, id: entityId(7), x: 10, y: 10 }],
+  });
   game.scene(0);
   assert.equal(sounds.length, 0, "ще рано");
   clock.t += 8 * TICK_MS;
@@ -121,7 +161,11 @@ test("власний постріл при передбаченні не зву�
   game.onSnapshot(snap(1, 0, [rec()]));
   game.step({ ...idle, fire: 1 });
   assert.deepEqual(sounds, ["fire"]);
-  game.onEvents({ type: "events", tick: 2, events: [{ kind: 1, id: entityId(1), x: 0, y: 0 }] });
+  game.onEvents({
+    type: "events",
+    tick: asTick(2),
+    events: [{ kind: 1, id: entityId(1), x: 0, y: 0 }],
+  });
   clock.t += 500;
   game.scene(0);
   assert.deepEqual(sounds, ["fire"]);
@@ -130,7 +174,7 @@ test("власний постріл при передбаченні не зву�
 test("pong дає RTT; netStats рахує джитер і втрати за прогалинами тиків", () => {
   const { game, clock } = make();
   clock.t = 5000;
-  game.onPong({ type: "pong", tick: 1, t: 4900 });
+  game.onPong({ type: "pong", tick: asTick(1), t: 4900 });
   assert.equal(Math.round(game.rttMs), 100);
 
   for (const tick of [1, 2, 3, 5, 6, 9]) {

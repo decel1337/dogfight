@@ -12,7 +12,10 @@ test("ticker: абсолютні цілі — за 1 с ≈ 30 тиків без
   ticker.stop();
   const elapsed = performance.now() - t0;
   const expected = elapsed / (1000 / 30);
-  assert.ok(Math.abs(count - expected) <= 2, `${count} тиків за ${elapsed | 0} мс`);
+  assert.ok(
+    Math.abs(count - expected) <= 2,
+    `${count} тиків за ${elapsed | 0} мс`,
+  );
   assert.ok((ticker.stats().jitterMs?.p99 ?? Infinity) < 25);
 });
 

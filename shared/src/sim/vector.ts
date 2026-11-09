@@ -46,10 +46,7 @@ export class Vector2 {
   rotate(angle: number): Vector2 {
     const c = cos(angle);
     const s = sin(angle);
-    return new Vector2(
-      this.x * c - this.y * s,
-      this.x * s + this.y * c,
-    );
+    return new Vector2(this.x * c - this.y * s, this.x * s + this.y * c);
   }
 
   dot(v: Vector2): number {

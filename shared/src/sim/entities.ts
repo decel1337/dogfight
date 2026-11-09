@@ -1,9 +1,27 @@
 import { BULLET, DT, SHIP } from "../constants.ts";
-import { HomingBehavior } from "./behaviors.ts";
-import { assertNever, entityId, type EntityId, NO_ENTITY, type PlayerId } from "../types.ts";
+import { Pool } from "../pool.ts";
 import type { Rng } from "../prng.ts";
-import { Entity, type EntityKind, type EntityOf, type EntityRecord, type KindCode } from "./entity.ts";
-import { type Controls, integrate, muzzle, type ShipState } from "./integrate.ts";
+import {
+  assertNever,
+  type EntityId,
+  entityId,
+  NO_ENTITY,
+  type PlayerId,
+} from "../types.ts";
+import { HomingBehavior } from "./behaviors.ts";
+import {
+  Entity,
+  type EntityKind,
+  type EntityOf,
+  type EntityRecord,
+  type KindCode,
+} from "./entity.ts";
+import {
+  type Controls,
+  integrate,
+  muzzle,
+  type ShipState,
+} from "./integrate.ts";
 import { Vector2 } from "./vector.ts";
 import type { World } from "./world.ts";
 
@@ -25,7 +43,9 @@ export type Damage = (typeof DAMAGE)[keyof typeof DAMAGE];
 export const PICKUP_TYPES = ["shield", "rapid"] as const;
 export type PickupType = (typeof PICKUP_TYPES)[number];
 
-export const PICKUP_EFFECTS: { readonly [T in PickupType]: (ship: Ship) => void } = {
+export const PICKUP_EFFECTS: {
+  readonly [T in PickupType]: (ship: Ship) => void;
+} = {
   shield: (ship) => ship.activateShield(),
   rapid: (ship) => ship.activateRapidFire(),
 };
@@ -46,7 +66,11 @@ export class Ship extends Entity {
   rapidTicks = 0;
   cooldown = 0;
 
-  constructor(x: number, y: number, { playerId = null }: { playerId?: PlayerId | null } = {}) {
+  constructor(
+    x: number,
+    y: number,
+    { playerId = null }: { playerId?: PlayerId | null } = {},
+  ) {
     super(x, y, SHIP.radius);
     this.playerId = playerId;
   }
@@ -74,7 +98,10 @@ export class Ship extends Entity {
   }
 
   // Один крок input гравця. Повертає кулю, якщо був постріл.
-  applyInput(input: Controls & { readonly seq: number }, world: World): Bullet | null {
+  applyInput(
+    input: Controls & { readonly seq: number },
+    world: World,
+  ): Bullet | null {
     if (this.dead) return null;
     const next = integrate(this.state(), input, DT, world.arena);
     this.pos = new Vector2(next.x, next.y);
@@ -88,7 +115,7 @@ export class Ship extends Entity {
 
   fire(homing: boolean, seq: number, world: World): Bullet {
     const m = muzzle(this.state(), homing);
-    const bullet = new Bullet(m.x, m.y, new Vector2(m.vx, m.vy), m.angle, {
+    const bullet = Bullet.acquire(m.x, m.y, new Vector2(m.vx, m.vy), m.angle, {
       ownerId: this.id,
       homing,
       tag: seq & 0xff,
@@ -189,21 +216,74 @@ export class Ship extends Entity {
 // пізнає свою кулю в снапшоті (локально передбачена куля -> куля сервера).
 export class Bullet extends Entity {
   readonly kind: "bullet" = "bullet";
-  readonly ownerId: EntityId;
-  readonly tag: number;
-  readonly homing: boolean;
+  // Не readonly: куля живе в пулі й заново ініціалізується (reset). Назовні
+  // ці поля лише читаються.
+  ownerId: EntityId;
+  tag: number;
+  homing: boolean;
   ttl: number;
+
+  // Пул куль: сервер і передбачення створюють їх десятками на секунду. Світ
+  // повертає мертву кулю в пул наприкінці кроку (World.step); виклики
+  // `Bullet.acquire` замінюють `new Bullet`.
+  static readonly pool = new Pool<Bullet>(
+    () => new Bullet(0, 0, new Vector2(0, 0), 0),
+  );
+
+  static acquire(
+    x: number,
+    y: number,
+    vel: Vector2,
+    angle: number,
+    options: { ownerId?: EntityId; homing?: boolean; tag?: number } = {},
+  ): Bullet {
+    const bullet = Bullet.pool.acquire();
+    bullet.reset(x, y, vel, angle, options);
+    return bullet;
+  }
+
+  static release(bullet: Bullet): void {
+    Bullet.pool.release(bullet);
+  }
 
   constructor(
     x: number,
     y: number,
     vel: Vector2,
     angle: number,
-    { ownerId = NO_ENTITY, homing = false, tag = 0 }: { ownerId?: EntityId; homing?: boolean; tag?: number } = {},
+    {
+      ownerId = NO_ENTITY,
+      homing = false,
+      tag = 0,
+    }: { ownerId?: EntityId; homing?: boolean; tag?: number } = {},
   ) {
     super(x, y, BULLET.radius);
+    this.ownerId = ownerId;
+    this.tag = tag;
+    this.homing = homing;
+    this.ttl = 0;
+    this.reset(x, y, vel, angle, { ownerId, homing, tag });
+  }
+
+  // Повертає кулю в стан «щойно створена» — рівно те, що робив конструктор.
+  reset(
+    x: number,
+    y: number,
+    vel: Vector2,
+    angle: number,
+    {
+      ownerId = NO_ENTITY,
+      homing = false,
+      tag = 0,
+    }: { ownerId?: EntityId; homing?: boolean; tag?: number } = {},
+  ): void {
+    this.id = NO_ENTITY;
+    this.pos = new Vector2(x, y);
     this.vel = vel;
     this.angle = angle;
+    this.radius = BULLET.radius;
+    this.alive = true;
+    this.behaviors.length = 0;
     this.ownerId = ownerId;
     this.tag = tag;
     this.homing = homing;
@@ -225,16 +305,27 @@ export class Bullet extends Entity {
   }
 
   toSnapshot(): EntityRecord {
-    return this.record(this.homing ? HOMING_FLAG : 0, 0, this.tag, this.ownerId);
+    return this.record(
+      this.homing ? HOMING_FLAG : 0,
+      0,
+      this.tag,
+      this.ownerId,
+    );
   }
 
   static fromSnapshot(rec: EntityRecord): Bullet {
     const homing = (rec.flags & HOMING_FLAG) !== 0;
-    const bullet = new Bullet(rec.x, rec.y, new Vector2(rec.vx, rec.vy), rec.angle, {
-      ownerId: entityId(rec.c),
-      homing,
-      tag: rec.b,
-    });
+    const bullet = new Bullet(
+      rec.x,
+      rec.y,
+      new Vector2(rec.vx, rec.vy),
+      rec.angle,
+      {
+        ownerId: entityId(rec.c),
+        homing,
+        tag: rec.b,
+      },
+    );
     bullet.id = rec.id;
     return bullet;
   }
@@ -324,7 +415,10 @@ export class Pickup extends Entity {
 // забутий варіант.
 export type AnyEntity = Ship | Bullet | Asteroid | Pickup;
 
-export function isKind<K extends EntityKind>(entity: AnyEntity, kind: K): entity is EntityOf<K> {
+export function isKind<K extends EntityKind>(
+  entity: AnyEntity,
+  kind: K,
+): entity is EntityOf<K> {
   return entity.kind === kind;
 }
 

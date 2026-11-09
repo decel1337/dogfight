@@ -12,7 +12,8 @@
 		"./codec": "./src/codec/index.ts",
 		"./netcode": "./src/netcode/index.ts",
 		"./types": "./src/types.ts",
-		"./emitter": "./src/emitter.ts"
+		"./emitter": "./src/emitter.ts",
+		"./pool": "./src/pool.ts"
 	},
 	"scripts": {
 		"typecheck": "tsc --noEmit -p tsconfig.json"

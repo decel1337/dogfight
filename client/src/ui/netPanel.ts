@@ -16,7 +16,12 @@ const PRESETS: Record<string, NetSettings> = {
 };
 
 export interface NetPanelOptions {
-  initial: { net: NetSettings; predict: boolean; delay: number; graph: boolean };
+  initial: {
+    net: NetSettings;
+    predict: boolean;
+    delay: number;
+    graph: boolean;
+  };
   onNet: (settings: NetSettings) => void;
   onPredict: (on: boolean) => void;
   onDelay: (ticks: number) => void;
@@ -53,7 +58,10 @@ export function createNetPanel({
     <label>prediction <input id="npPredict" type="checkbox"></label>
     <label>interp delay
       <select id="npDelay">${[0, 1, 2, 3, 4, 6]
-        .map((n) => `<option value="${n}">${n} ticks (${Math.round((n * 1000) / 30)} ms)</option>`)
+        .map(
+          (n) =>
+            `<option value="${n}">${n} ticks (${Math.round((n * 1000) / 30)} ms)</option>`,
+        )
         .join("")}</select></label>
     <label>netgraph (F3) <input id="npGraph" type="checkbox"></label>`;
   document.body.append(root);
@@ -99,7 +107,8 @@ export function createNetPanel({
   // Фокус у полях панелі не повинен керувати кораблем, а клавіші гри —
   // змінювати поля: прибираємо фокус після зміни.
   root.addEventListener("change", () => {
-    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    if (document.activeElement instanceof HTMLElement)
+      document.activeElement.blur();
   });
 
   return {

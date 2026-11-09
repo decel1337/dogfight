@@ -1,28 +1,51 @@
 import { EventEmitter } from "node:events";
 import { SHIP } from "@dogfight/shared/constants";
 import type { GameEvent, InputMessage } from "@dogfight/shared/protocol";
-import { Asteroid, PICKUP_TYPES, Pickup, Ship, World } from "@dogfight/shared/sim";
 import type { Snapshot, WorldEvents } from "@dogfight/shared/sim";
-import type { PlayerId } from "@dogfight/shared/types";
+import {
+  Asteroid,
+  PICKUP_TYPES,
+  Pickup,
+  Ship,
+  World,
+} from "@dogfight/shared/sim";
+import {
+  type PlayerId,
+  SEQ_ZERO,
+  type SeqNo,
+  TICK_ZERO,
+  type Tick,
+  tick,
+} from "@dogfight/shared/types";
 import type { Player, Room } from "./rooms.ts";
 import { Ticker, type TickerOptions } from "./ticker.ts";
 
 // Коди подій для клієнтів (див. специфікацію бінарного протоколу).
-export const EVENT_KIND = { fired: 1, hit: 2, exploded: 3 } as const satisfies Record<
-  keyof WorldEvents,
-  GameEvent["kind"]
->;
+export const EVENT_KIND = {
+  fired: 1,
+  hit: 2,
+  exploded: 3,
+} as const satisfies Record<keyof WorldEvents, GameEvent["kind"]>;
 
-const WORLD_EVENT_TYPES = ["fired", "hit", "exploded"] as const satisfies readonly (keyof WorldEvents)[];
+const WORLD_EVENT_TYPES = [
+  "fired",
+  "hit",
+  "exploded",
+] as const satisfies readonly (keyof WorldEvents)[];
 
 // Якщо у WorldEvents з'явиться нова подія без запису в списку — це не скомпілюється.
-const _allWorldEvents: Exclude<keyof WorldEvents, (typeof WORLD_EVENT_TYPES)[number]> extends never ? true : never = true;
+const _allWorldEvents: Exclude<
+  keyof WorldEvents,
+  (typeof WORLD_EVENT_TYPES)[number]
+> extends never
+  ? true
+  : never = true;
 void _allWorldEvents;
 
 export interface MatchFrame {
-  readonly tick: number;
+  readonly tick: Tick;
   readonly snapshot: Snapshot;
-  readonly acks: ReadonlyMap<PlayerId, number>;
+  readonly acks: ReadonlyMap<PlayerId, SeqNo>;
   readonly events: GameEvent[];
 }
 
@@ -34,9 +57,9 @@ interface PlayerEntry {
   readonly ship: Ship;
   readonly queue: InputMessage[];
   budget: number;
-  ack: number;
-  lastSeq: number;
-  clientTick: number;
+  ack: SeqNo;
+  lastSeq: SeqNo;
+  clientTick: Tick;
 }
 
 export interface MatchOptions {
@@ -73,8 +96,15 @@ export class Match extends EventEmitter<MatchEvents> {
   constructor({ room, seed, now, ticker = {} }: MatchOptions) {
     super();
     this.room = room;
-    this.world = new World({ arena: room.arena, seed: seed ?? hashSeed(room.id) });
-    this.ticker = new Ticker({ onTick: () => this.tick(), ...(now ? { now } : {}), ...ticker });
+    this.world = new World({
+      arena: room.arena,
+      seed: seed ?? hashSeed(room.id),
+    });
+    this.ticker = new Ticker({
+      onTick: () => this.tick(),
+      ...(now ? { now } : {}),
+      ...ticker,
+    });
     this.#populate();
 
     for (const type of WORLD_EVENT_TYPES) {
@@ -108,15 +138,17 @@ export class Match extends EventEmitter<MatchEvents> {
 
   addPlayer(player: Pick<Player, "id">): Ship {
     const spot = this.world.findSafeSpot(SHIP.radius * 6);
-    const ship = this.world.spawn(new Ship(spot.x, spot.y, { playerId: player.id }));
+    const ship = this.world.spawn(
+      new Ship(spot.x, spot.y, { playerId: player.id }),
+    );
     ship.invulnerableTicks = SHIP.invulnerableTicks;
     this.#players.set(player.id, {
       ship,
       queue: [],
       budget: 0,
-      ack: 0,
-      lastSeq: 0,
-      clientTick: 0,
+      ack: SEQ_ZERO,
+      lastSeq: SEQ_ZERO,
+      clientTick: TICK_ZERO,
     });
     return ship;
   }
@@ -169,10 +201,10 @@ export class Match extends EventEmitter<MatchEvents> {
 
     const events = this.#events;
     this.#events = [];
-    const acks = new Map<PlayerId, number>();
+    const acks = new Map<PlayerId, SeqNo>();
     for (const [id, entry] of this.#players) acks.set(id, entry.ack);
     this.emit("frame", {
-      tick: this.world.tick,
+      tick: tick(this.world.tick),
       snapshot: this.world.snapshot(),
       acks,
       events,
@@ -192,7 +224,9 @@ export class Match extends EventEmitter<MatchEvents> {
     if (pickups < MAX_PICKUPS && this.world.tick % PICKUP_EVERY_TICKS === 0) {
       const { width, height } = this.world.arena;
       const rng = this.world.rng;
-      const type = PICKUP_TYPES[Math.floor(rng() * PICKUP_TYPES.length)] ?? PICKUP_TYPES[0];
+      const type =
+        PICKUP_TYPES[Math.floor(rng() * PICKUP_TYPES.length)] ??
+        PICKUP_TYPES[0];
       this.world.spawn(new Pickup(rng() * width, rng() * height, type));
     }
   }

@@ -1,7 +1,7 @@
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
-import path from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import path from "node:path";
 import { pipeline } from "node:stream/promises";
 
 const MIME: Readonly<Record<string, string>> = {
@@ -10,6 +10,7 @@ const MIME: Readonly<Record<string, string>> = {
   ".mjs": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".json": "application/json; charset=utf-8",
+  ".webmanifest": "application/manifest+json; charset=utf-8",
   ".svg": "image/svg+xml",
   ".png": "image/png",
   ".jpg": "image/jpeg",
@@ -45,7 +46,7 @@ export function resolveSafe(root: string, urlPath: string): string | null {
 // браузер має перевіряти.
 function cacheControl(file: string): string {
   const ext = path.extname(file).toLowerCase();
-  if (ext === ".html") return "no-cache";
+  if (ext === ".html" || path.basename(file) === "sw.js") return "no-cache";
   if (/-[\w-]{8,}\.\w+$/.test(path.basename(file))) {
     return "public, max-age=31536000, immutable";
   }

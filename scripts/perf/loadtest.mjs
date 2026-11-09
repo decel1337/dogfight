@@ -2,6 +2,8 @@
 // безголових WS-клієнтів (бінарний кодек, input 30 Гц, стрільба) і міряє:
 //   tick p99 (workMs, /api/stats), jitter p99, ELU, RSS, байти/с на сервері.
 // Запуск: node scripts/perf/loadtest.mjs [--n 8,32,64,128] [--secs 15] [--layout single|rooms] [--bots 0]
+//   [--target https://app.fly.dev]  — міряти ЖИВИЙ/staging-сервер замість локального процесу
+//   (його ліміти проти одного IP — MAX_CONNECTIONS_PER_IP — теж діятимуть: це і є «перевірка лімітів під навантаженням»)
 import { spawn } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -17,13 +19,14 @@ const NS = arg("n", "8,32,64,128").split(",").map(Number);
 const SECS = Number(arg("secs", "15"));
 const LAYOUT = arg("layout", "single"); // single: одна кімната з N; rooms: кімнати по 8
 const OUT = arg("out", "");
+const TARGET = arg("target", "");
 const PORT = Number(arg("port", "3921"));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const serverEntry = path.resolve(import.meta.dirname, "../../server/src/index.ts");
 
 async function runOnce(n) {
   const logDir = mkdtempSync(path.join(tmpdir(), "lt-"));
-  const server = spawn(
+  const server = TARGET ? null : spawn(
     process.execPath,
     [...(process.env.SERVER_FLAGS?.split(" ").filter(Boolean) ?? []), "--experimental-strip-types", "--disable-warning=ExperimentalWarning", serverEntry],
     {
@@ -32,11 +35,13 @@ async function runOnce(n) {
         PORT: String(PORT), HOST: "127.0.0.1", LOG_DIR: logDir,
         MAX_PLAYERS_PER_ROOM: LAYOUT === "single" ? String(Math.max(8, n)) : "8",
         MAX_ROOMS: "100", STATIC_DIR: logDir,
+        MAX_CONNECTIONS_PER_IP: "10000", // усі клієнти з одного IP; ліміт Lab 8 тут не міряємо
       },
       stdio: "ignore",
     },
   );
-  const base = `http://127.0.0.1:${PORT}`;
+  const base = TARGET ? TARGET.replace(/\/$/, "") : `http://127.0.0.1:${PORT}`;
+  const wsBase = base.replace(/^http/, "ws");
   for (let i = 0; i < 100; i++) {
     try { if ((await fetch(`${base}/health`)).ok) break; } catch { /* ще не слухає */ }
     await sleep(100);
@@ -53,7 +58,7 @@ async function runOnce(n) {
   const timers = [];
   for (let i = 0; i < n; i++) {
     const room = rooms[i % roomCount];
-    const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws`);
+    const ws = new WebSocket(`${wsBase}/ws`);
     ws.binaryType = "nodebuffer";
     let seq = 0;
     ws.on("open", () => ws.send(JSON.stringify({ v: 1, type: "join", room: room.id, name: `c${i}`, codec: "binary" })));
@@ -92,8 +97,10 @@ async function runOnce(n) {
   };
   for (const t of timers) clearInterval(t);
   for (const ws of sockets) ws.terminate();
-  server.kill("SIGTERM");
-  await new Promise((r) => server.once("exit", r));
+  if (server) {
+    server.kill("SIGTERM");
+    await new Promise((r) => server.once("exit", r));
+  }
   return row;
 }
 

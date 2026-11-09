@@ -42,7 +42,10 @@ export interface RetryOptions {
 
 // ---------- Допоміжне ----------
 
-export function withTimeout(signal: AbortSignal | undefined, timeoutMs: number): AbortSignal {
+export function withTimeout(
+  signal: AbortSignal | undefined,
+  timeoutMs: number,
+): AbortSignal {
   const signals = [AbortSignal.timeout(timeoutMs)];
   if (signal) signals.push(signal);
   return AbortSignal.any(signals);
@@ -102,7 +105,10 @@ export async function withRetry<T>(
 // ---------- Мережа ----------
 
 // fetch НЕ відхиляється на 404/500, тому ok перевіряємо вручну.
-async function fetchOk(url: string, signal: AbortSignal | undefined): Promise<Response> {
+async function fetchOk(
+  url: string,
+  signal: AbortSignal | undefined,
+): Promise<Response> {
   const response = await fetch(url, { signal });
   if (!response.ok) {
     throw new HttpError(url, response.status, response.statusText);
@@ -135,7 +141,12 @@ export async function fetchBytes(
 // JSON із таймаутом на кожну спробу та повторами.
 export function requestJson(
   url: string,
-  { signal, timeoutMs = 5000, retries = 2, ...retryOptions }: RequestOptions & RetryOptions = {},
+  {
+    signal,
+    timeoutMs = 5000,
+    retries = 2,
+    ...retryOptions
+  }: RequestOptions & RetryOptions = {},
 ): Promise<unknown> {
   return withRetry(
     () => fetchJson(url, { signal: withTimeout(signal, timeoutMs) }),
@@ -166,7 +177,11 @@ export async function postJson(
   if (!response.ok) {
     const body: unknown = await response.json().catch(() => null);
     const detail = errorText(body);
-    const error = new HttpError(url, response.status, detail ?? response.statusText);
+    const error = new HttpError(
+      url,
+      response.status,
+      detail ?? response.statusText,
+    );
     error.detail = detail;
     throw error;
   }
@@ -238,31 +253,43 @@ function parseManifest(raw: unknown): Manifest {
   if (!isRecord(raw)) throw new BadPayloadError("Маніфест має бути об'єктом");
   const images: Manifest["images"] = {};
   if (raw.images !== undefined) {
-    if (!isRecord(raw.images)) throw new BadPayloadError("Маніфест: images має бути об'єктом");
+    if (!isRecord(raw.images))
+      throw new BadPayloadError("Маніфест: images має бути об'єктом");
     for (const [key, entry] of Object.entries(raw.images)) {
       if (typeof entry === "string") images[key] = entry;
-      else if (isRecord(entry) && typeof entry.url === "string") images[key] = { ...entry, url: entry.url };
-      else throw new BadPayloadError(`Маніфест: некоректний запис images.${key}`);
+      else if (isRecord(entry) && typeof entry.url === "string")
+        images[key] = { ...entry, url: entry.url };
+      else
+        throw new BadPayloadError(`Маніфест: некоректний запис images.${key}`);
     }
   }
   const sounds: Manifest["sounds"] = {};
   if (raw.sounds !== undefined) {
-    if (!isRecord(raw.sounds)) throw new BadPayloadError("Маніфест: sounds має бути об'єктом");
+    if (!isRecord(raw.sounds))
+      throw new BadPayloadError("Маніфест: sounds має бути об'єктом");
     for (const [key, url] of Object.entries(raw.sounds)) {
-      if (typeof url !== "string") throw new BadPayloadError(`Маніфест: некоректний запис sounds.${key}`);
+      if (typeof url !== "string")
+        throw new BadPayloadError(`Маніфест: некоректний запис sounds.${key}`);
       sounds[key] = url;
     }
   }
-  const arena = isRecord(raw.arena) && typeof raw.arena.width === "number" && typeof raw.arena.height === "number"
-    ? { width: raw.arena.width, height: raw.arena.height }
-    : null;
+  const arena =
+    isRecord(raw.arena) &&
+    typeof raw.arena.width === "number" &&
+    typeof raw.arena.height === "number"
+      ? { width: raw.arena.width, height: raw.arena.height }
+      : null;
   return { images, sounds, arena };
 }
 
 // Завантажувачі підміняються в тестах, тож їхній тип — окремий generic-контракт.
 export interface Loaders<I = ImageBitmap, S = AudioBuffer> {
   image(url: string, options: LoadOptions): Promise<I>;
-  sound(url: string, audioCtx: Pick<BaseAudioContext, "decodeAudioData"> | undefined, options: LoadOptions): Promise<S>;
+  sound(
+    url: string,
+    audioCtx: Pick<BaseAudioContext, "decodeAudioData"> | undefined,
+    options: LoadOptions,
+  ): Promise<S>;
 }
 
 export interface LoadedImage<I> {
@@ -340,7 +367,10 @@ export async function loadAll(
       key,
       url: meta.url,
       run: async () => {
-        images[key] = { ...meta, image: await loaders.image(meta.url, options) };
+        images[key] = {
+          ...meta,
+          image: await loaders.image(meta.url, options),
+        };
       },
     });
   }
@@ -372,5 +402,11 @@ export async function loadAll(
     await Promise.all(tasks.map(runTask));
   }
 
-  return { images, sounds, arena: manifest.arena, failed, ms: performance.now() - startedAt };
+  return {
+    images,
+    sounds,
+    arena: manifest.arena,
+    failed,
+    ms: performance.now() - startedAt,
+  };
 }

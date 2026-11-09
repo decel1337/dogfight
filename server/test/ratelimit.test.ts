@@ -3,14 +3,12 @@ import { test } from "vitest";
 import { TokenBucket } from "../src/ratelimit.ts";
 
 test("token bucket: дозволяє burst, потім відмовляє", () => {
-  let now = 0;
+  const now = 0;
   const bucket = new TokenBucket({ ratePerSec: 5, burst: 3, now: () => now });
-  assert.deepEqual([bucket.take(), bucket.take(), bucket.take(), bucket.take()], [
-    true,
-    true,
-    true,
-    false,
-  ]);
+  assert.deepEqual(
+    [bucket.take(), bucket.take(), bucket.take(), bucket.take()],
+    [true, true, true, false],
+  );
 });
 
 test("token bucket: поповнюється з часом, але не вище burst", () => {

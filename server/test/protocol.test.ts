@@ -1,17 +1,21 @@
 import assert from "node:assert/strict";
-import { test } from "vitest";
 import {
   CLOSE,
   type ClientMessage,
   type CloseCode,
-  type ParseResult,
   decodeServerJson,
   encode,
+  type ParseResult,
   parseClientMessage,
 } from "@dogfight/shared/protocol";
+import { tick as asTick } from "@dogfight/shared/types";
+import { test } from "vitest";
 
 const parse = (value: unknown, maxBytes = 2048): ParseResult<ClientMessage> =>
-  parseClientMessage(typeof value === "string" ? value : JSON.stringify(value), { maxBytes });
+  parseClientMessage(
+    typeof value === "string" ? value : JSON.stringify(value),
+    { maxBytes },
+  );
 
 // Звуження union: після виклику result гарантовано відмова з кодом.
 function expectRejected(result: ParseResult<unknown>, code: CloseCode): void {
@@ -22,7 +26,10 @@ function expectRejected(result: ParseResult<unknown>, code: CloseCode): void {
 
 test("protocol: коректні join і chat", () => {
   const join = parse({ v: 1, type: "join", room: "r-1", name: "  Ace " });
-  assert.deepEqual(join, { ok: true, msg: { type: "join", room: "r-1", name: "Ace", codec: "binary" } });
+  assert.deepEqual(join, {
+    ok: true,
+    msg: { type: "join", room: "r-1", name: "Ace", codec: "binary" },
+  });
   assert.deepEqual(parse({ v: 1, type: "chat", text: " hi " }), {
     ok: true,
     msg: { type: "chat", text: "hi" },
@@ -51,7 +58,12 @@ test("protocol: відхиляє зламану форму з кодом 4002", 
 });
 
 test("protocol: ключі прототипу не вважаються типами повідомлень", () => {
-  for (const type of ["__proto__", "constructor", "toString", "hasOwnProperty"]) {
+  for (const type of [
+    "__proto__",
+    "constructor",
+    "toString",
+    "hasOwnProperty",
+  ]) {
     assert.equal(parse({ v: 1, type }).ok, false, type);
   }
 });
@@ -62,7 +74,10 @@ test("protocol: завеликий розмір -> 1009 ще до розбору
 
 test("protocol: розмір рахується в байтах, а не символах", () => {
   const text = "я".repeat(60); // 120 байт у UTF-8
-  expectRejected(parse(JSON.stringify({ v: 1, type: "chat", text }), 100), CLOSE.TOO_BIG);
+  expectRejected(
+    parse(JSON.stringify({ v: 1, type: "chat", text }), 100),
+    CLOSE.TOO_BIG,
+  );
 });
 
 test("protocol: encode додає версію і тип", () => {
@@ -74,7 +89,15 @@ test("protocol: encode додає версію і тип", () => {
 });
 
 test("protocol: input — кожне поле перевіряється (turn: 1000 — це чит)", () => {
-  const ok = { v: 1, type: "input", seq: 1, tick: 5, thrust: 1, turn: -1, fire: 2 };
+  const ok = {
+    v: 1,
+    type: "input",
+    seq: 1,
+    tick: 5,
+    thrust: 1,
+    turn: -1,
+    fire: 2,
+  };
   assert.equal(parse(ok).ok, true);
   const bads = [
     { turn: 1000 },
@@ -93,22 +116,46 @@ test("protocol: input — кожне поле перевіряється (turn: 
 });
 
 test("protocol: net має межі, join.codec — лише відомі", () => {
-  assert.equal(parse({ v: 1, type: "net", latency: 200, jitter: 50, drop: 5 }).ok, true);
-  assert.equal(parse({ v: 1, type: "net", latency: 99999, jitter: 0, drop: 0 }).ok, false);
-  assert.equal(parse({ v: 1, type: "net", latency: 1, jitter: 0, drop: 101 }).ok, false);
-  assert.equal(parse({ v: 1, type: "join", room: "r", name: "A", codec: "xml" }).ok, false);
-  assert.equal(parse({ v: 1, type: "join", room: "r", name: "A", codec: "json" }).ok, true);
+  assert.equal(
+    parse({ v: 1, type: "net", latency: 200, jitter: 50, drop: 5 }).ok,
+    true,
+  );
+  assert.equal(
+    parse({ v: 1, type: "net", latency: 99999, jitter: 0, drop: 0 }).ok,
+    false,
+  );
+  assert.equal(
+    parse({ v: 1, type: "net", latency: 1, jitter: 0, drop: 101 }).ok,
+    false,
+  );
+  assert.equal(
+    parse({ v: 1, type: "join", room: "r", name: "A", codec: "xml" }).ok,
+    false,
+  );
+  assert.equal(
+    parse({ v: 1, type: "join", room: "r", name: "A", codec: "json" }).ok,
+    true,
+  );
 });
 
 test("protocol: сервер теж валідується (decodeServerJson)", () => {
-  const good = encode({ type: "pong", t: 5, tick: 9 });
+  const good = encode({ type: "pong", t: 5, tick: asTick(9) });
   assert.deepEqual(decodeServerJson(good), { type: "pong", t: 5, tick: 9 });
-  assert.equal(decodeServerJson(JSON.stringify({ v: 1, type: "pong", t: "x", tick: 9 })), null);
-  assert.equal(decodeServerJson(JSON.stringify({ v: 2, type: "pong", t: 1, tick: 9 })), null);
+  assert.equal(
+    decodeServerJson(JSON.stringify({ v: 1, type: "pong", t: "x", tick: 9 })),
+    null,
+  );
+  assert.equal(
+    decodeServerJson(JSON.stringify({ v: 2, type: "pong", t: 1, tick: 9 })),
+    null,
+  );
   assert.equal(decodeServerJson("{"), null);
 });
 
 test("protocol: клієнт не може надіслати серверне повідомлення", () => {
   expectRejected(parse({ v: 1, type: "joined" }), CLOSE.INVALID_MESSAGE);
-  expectRejected(parse({ v: 1, type: "snapshot", tick: 1, ack: 0, entities: [] }), CLOSE.INVALID_MESSAGE);
+  expectRejected(
+    parse({ v: 1, type: "snapshot", tick: 1, ack: 0, entities: [] }),
+    CLOSE.INVALID_MESSAGE,
+  );
 });

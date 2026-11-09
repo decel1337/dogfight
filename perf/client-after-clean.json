@@ -2,20 +2,20 @@
   "label": "after",
   "secs": 30,
   "bots": 8,
-  "entitiesInScene": 49,
-  "frames": 1835,
+  "entitiesInScene": 59,
+  "frames": 1839,
   "frameMs": {
-    "n": 1835,
+    "n": 1839,
     "p50": 16.7,
     "p95": 16.8,
     "p99": 16.8,
-    "max": 49.9
+    "max": 16.8
   },
   "gc": {
     "minor": {
-      "count": 29,
-      "totalMs": 35.48,
-      "maxMs": 2.79
+      "count": 30,
+      "totalMs": 35.39,
+      "maxMs": 2.04
     },
     "major": {
       "count": 0,
@@ -25,206 +25,213 @@
   },
   "gcTimeline": [
     {
-      "tSec": 1.7,
+      "tSec": 1.1,
       "kind": "minor",
-      "ms": 2.24,
-      "heapBeforeMb": 5.2,
+      "ms": 2.04,
+      "heapBeforeMb": 5.3,
       "heapAfterMb": 3.4
     },
     {
-      "tSec": 2.8,
+      "tSec": 2.4,
       "kind": "minor",
-      "ms": 1.08,
-      "heapBeforeMb": 5.1,
-      "heapAfterMb": 3.5
-    },
-    {
-      "tSec": 4.1,
-      "kind": "minor",
-      "ms": 0.54,
+      "ms": 2.02,
       "heapBeforeMb": 5.3,
       "heapAfterMb": 3.5
     },
     {
-      "tSec": 6.1,
+      "tSec": 3.5,
       "kind": "minor",
-      "ms": 1.12,
-      "heapBeforeMb": 5.2,
+      "ms": 1.75,
+      "heapBeforeMb": 5.4,
       "heapAfterMb": 3.5
     },
     {
-      "tSec": 6.7,
+      "tSec": 4.7,
       "kind": "minor",
-      "ms": 0.94,
-      "heapBeforeMb": 4.4,
-      "heapAfterMb": 3.5
+      "ms": 0.71,
+      "heapBeforeMb": 5.4,
+      "heapAfterMb": 3.6
+    },
+    {
+      "tSec": 5.9,
+      "kind": "minor",
+      "ms": 1.88,
+      "heapBeforeMb": 5.4,
+      "heapAfterMb": 3.6
     },
     {
       "tSec": 7.3,
       "kind": "minor",
-      "ms": 1.7,
-      "heapBeforeMb": 4.5,
+      "ms": 0.84,
+      "heapBeforeMb": 5.4,
       "heapAfterMb": 3.6
     },
     {
-      "tSec": 7.8,
+      "tSec": 8.5,
       "kind": "minor",
-      "ms": 0.51,
-      "heapBeforeMb": 4.5,
+      "ms": 1.01,
+      "heapBeforeMb": 5.6,
       "heapAfterMb": 3.6
     },
     {
-      "tSec": 9.1,
+      "tSec": 9.7,
       "kind": "minor",
-      "ms": 1.76,
-      "heapBeforeMb": 5.3,
-      "heapAfterMb": 3.6
-    },
-    {
-      "tSec": 10.6,
-      "kind": "minor",
-      "ms": 2.48,
+      "ms": 1.45,
       "heapBeforeMb": 5.2,
-      "heapAfterMb": 3.6
-    },
-    {
-      "tSec": 11.7,
-      "kind": "minor",
-      "ms": 1.86,
-      "heapBeforeMb": 5.3,
       "heapAfterMb": 3.7
     },
     {
-      "tSec": 13,
+      "tSec": 11,
       "kind": "minor",
-      "ms": 0.99,
+      "ms": 0.59,
+      "heapBeforeMb": 5.6,
+      "heapAfterMb": 3.7
+    },
+    {
+      "tSec": 12.6,
+      "kind": "minor",
+      "ms": 1.79,
       "heapBeforeMb": 5.5,
       "heapAfterMb": 3.7
     },
     {
-      "tSec": 14.9,
+      "tSec": 13.9,
       "kind": "minor",
-      "ms": 0.84,
+      "ms": 1.89,
+      "heapBeforeMb": 5.3,
+      "heapAfterMb": 3.7
+    },
+    {
+      "tSec": 15.8,
+      "kind": "minor",
+      "ms": 0.83,
       "heapBeforeMb": 5.4,
       "heapAfterMb": 3.8
     },
     {
-      "tSec": 15.5,
+      "tSec": 16.7,
       "kind": "minor",
-      "ms": 0.84,
+      "ms": 0.74,
       "heapBeforeMb": 4.6,
-      "heapAfterMb": 3.8
-    },
-    {
-      "tSec": 16.1,
-      "kind": "minor",
-      "ms": 0.72,
-      "heapBeforeMb": 4.6,
-      "heapAfterMb": 3.8
-    },
-    {
-      "tSec": 16.8,
-      "kind": "minor",
-      "ms": 1.59,
-      "heapBeforeMb": 4.7,
       "heapAfterMb": 3.8
     },
     {
       "tSec": 17.4,
       "kind": "minor",
-      "ms": 2.06,
+      "ms": 0.84,
       "heapBeforeMb": 4.7,
       "heapAfterMb": 3.8
     },
     {
-      "tSec": 19.1,
+      "tSec": 17.9,
       "kind": "minor",
-      "ms": 1.62,
-      "heapBeforeMb": 5.6,
+      "ms": 1.51,
+      "heapBeforeMb": 4.7,
+      "heapAfterMb": 3.9
+    },
+    {
+      "tSec": 18.4,
+      "kind": "minor",
+      "ms": 0.71,
+      "heapBeforeMb": 4.7,
+      "heapAfterMb": 3.9
+    },
+    {
+      "tSec": 19,
+      "kind": "minor",
+      "ms": 1.5,
+      "heapBeforeMb": 4.7,
       "heapAfterMb": 3.8
     },
     {
-      "tSec": 20,
+      "tSec": 19.8,
+      "kind": "minor",
+      "ms": 1.1,
+      "heapBeforeMb": 5.1,
+      "heapAfterMb": 3.8
+    },
+    {
+      "tSec": 20.9,
+      "kind": "minor",
+      "ms": 0.5,
+      "heapBeforeMb": 4.7,
+      "heapAfterMb": 3.8
+    },
+    {
+      "tSec": 21.8,
       "kind": "minor",
       "ms": 0.65,
       "heapBeforeMb": 4.7,
-      "heapAfterMb": 3.8
-    },
-    {
-      "tSec": 20.8,
-      "kind": "minor",
-      "ms": 0.62,
-      "heapBeforeMb": 4.7,
       "heapAfterMb": 3.9
     },
     {
-      "tSec": 21.6,
+      "tSec": 22.6,
       "kind": "minor",
-      "ms": 1.19,
-      "heapBeforeMb": 4.7,
+      "ms": 1.02,
+      "heapBeforeMb": 5.1,
       "heapAfterMb": 3.9
     },
     {
-      "tSec": 22.4,
+      "tSec": 23.4,
       "kind": "minor",
-      "ms": 0.46,
+      "ms": 1.22,
+      "heapBeforeMb": 4.8,
+      "heapAfterMb": 3.9
+    },
+    {
+      "tSec": 24.2,
+      "kind": "minor",
+      "ms": 0.73,
+      "heapBeforeMb": 4.8,
+      "heapAfterMb": 3.9
+    },
+    {
+      "tSec": 24.9,
+      "kind": "minor",
+      "ms": 0.92,
+      "heapBeforeMb": 4.8,
+      "heapAfterMb": 3.9
+    },
+    {
+      "tSec": 25.6,
+      "kind": "minor",
+      "ms": 0.68,
+      "heapBeforeMb": 4.8,
+      "heapAfterMb": 3.9
+    },
+    {
+      "tSec": 26.3,
+      "kind": "minor",
+      "ms": 1.57,
+      "heapBeforeMb": 4.8,
+      "heapAfterMb": 4
+    },
+    {
+      "tSec": 27,
+      "kind": "minor",
+      "ms": 1.66,
+      "heapBeforeMb": 4.8,
+      "heapAfterMb": 4
+    },
+    {
+      "tSec": 27.8,
+      "kind": "minor",
+      "ms": 0.72,
+      "heapBeforeMb": 5.2,
+      "heapAfterMb": 4
+    },
+    {
+      "tSec": 28.7,
+      "kind": "minor",
+      "ms": 0.73,
       "heapBeforeMb": 4.9,
-      "heapAfterMb": 3.9
-    },
-    {
-      "tSec": 23.3,
-      "kind": "minor",
-      "ms": 2.04,
-      "heapBeforeMb": 4.8,
-      "heapAfterMb": 3.9
-    },
-    {
-      "tSec": 24.3,
-      "kind": "minor",
-      "ms": 0.6,
-      "heapBeforeMb": 4.8,
-      "heapAfterMb": 3.9
-    },
-    {
-      "tSec": 25.1,
-      "kind": "minor",
-      "ms": 0.66,
-      "heapBeforeMb": 4.8,
-      "heapAfterMb": 3.9
-    },
-    {
-      "tSec": 26,
-      "kind": "minor",
-      "ms": 0.78,
-      "heapBeforeMb": 4.8,
-      "heapAfterMb": 3.9
-    },
-    {
-      "tSec": 26.9,
-      "kind": "minor",
-      "ms": 2.79,
-      "heapBeforeMb": 4.8,
       "heapAfterMb": 4
     },
     {
-      "tSec": 27.9,
+      "tSec": 29.7,
       "kind": "minor",
-      "ms": 1.47,
-      "heapBeforeMb": 4.8,
-      "heapAfterMb": 4
-    },
-    {
-      "tSec": 28.6,
-      "kind": "minor",
-      "ms": 0.61,
-      "heapBeforeMb": 4.8,
-      "heapAfterMb": 4
-    },
-    {
-      "tSec": 29.4,
-      "kind": "minor",
-      "ms": 0.74,
-      "heapBeforeMb": 4.8,
+      "ms": 1.78,
+      "heapBeforeMb": 4.9,
       "heapAfterMb": 4
     }
   ],

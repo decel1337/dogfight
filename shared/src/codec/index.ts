@@ -1,4 +1,10 @@
-import { CLOSE, type CodecName, type ClientGameMessage, type GameMessage, type ParseResult } from "../protocol/index.ts";
+import {
+  CLOSE,
+  type ClientGameMessage,
+  type CodecName,
+  type GameMessage,
+  type ParseResult,
+} from "../protocol/index.ts";
 import { CodecError, decodeBinary, encodeBinary } from "./binary.ts";
 import { decodeJson, encodeJson } from "./json.ts";
 
@@ -20,7 +26,8 @@ const binaryCodec: Codec = {
   binary: true,
   encode: encodeBinary,
   decode(frame) {
-    if (typeof frame === "string") throw new CodecError("очікувався бінарний кадр");
+    if (typeof frame === "string")
+      throw new CodecError("очікувався бінарний кадр");
     return decodeBinary(frame);
   },
 };
@@ -30,7 +37,8 @@ const jsonCodec: Codec = {
   binary: false,
   encode: encodeJson,
   decode(frame) {
-    if (typeof frame !== "string") throw new CodecError("очікувався текстовий кадр");
+    if (typeof frame !== "string")
+      throw new CodecError("очікувався текстовий кадр");
     return decodeJson(frame);
   },
 };

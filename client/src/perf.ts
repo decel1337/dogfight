@@ -11,7 +11,8 @@ export function perfBegin(): number {
 }
 
 export function perfEnd(name: PerfName, start: number): void {
-  if (PERF_ENABLED) performance.measure(name, { start, end: performance.now() });
+  if (PERF_ENABLED)
+    performance.measure(name, { start, end: performance.now() });
 }
 
 if (PERF_ENABLED) performance.mark("dogfight:perf-enabled");

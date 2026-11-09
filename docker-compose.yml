@@ -1,0 +1,31 @@
+# Локальний запуск «як у проді»:  docker compose up --build
+# Відкрити http://localhost:3000
+services:
+  dogfight:
+    build:
+      context: .
+      args:
+        GIT_SHA: ${GIT_SHA:-local}
+        APP_VERSION: ${APP_VERSION:-dev}
+    image: dogfight:local
+    ports:
+      - "3000:3000"
+    env_file:
+      - path: .env      # необов'язковий; приклад у .env.example
+        required: false
+    environment:
+      LOG_LEVEL: info
+    volumes:
+      - dogfight-data:/data      # реплеї матчів переживають перезапуск
+    restart: unless-stopped
+    stop_grace_period: 10s       # докер чекає graceful shutdown, потім SIGKILL
+    read_only: true              # коренева ФС лише для читання
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  dogfight-data:

@@ -66,7 +66,10 @@ export function drawNetgraph(
     ["Pending inp", `${stats.pendingInputs}`],
     ["Correction", `${stats.correctionPx.toFixed(2)} px`],
     ["Codec", stats.codec],
-    ["↓ / ↑", `${(extra.downKBs ?? 0).toFixed(1)} / ${(extra.upKBs ?? 0).toFixed(1)} KB/s`],
+    [
+      "↓ / ↑",
+      `${(extra.downKBs ?? 0).toFixed(1)} / ${(extra.upKBs ?? 0).toFixed(1)} KB/s`,
+    ],
   ];
   for (const [name, value] of rows) {
     ctx.fillStyle = "#8b949e";
@@ -81,8 +84,24 @@ export function drawNetgraph(
   ctx.fillText(mode, x + 110, y);
   y += 28;
 
-  sparkline(ctx, stats.arrivals, { x, y, w, h: 50, max: 100, color: "#58a6ff", label: "snapshot interval ms" });
+  sparkline(ctx, stats.arrivals, {
+    x,
+    y,
+    w,
+    h: 50,
+    max: 100,
+    color: "#58a6ff",
+    label: "snapshot interval ms",
+  });
   y += 78;
-  sparkline(ctx, stats.corrections, { x, y, w, h: 50, max: 20, color: "#ffa657", label: "correction px" });
+  sparkline(ctx, stats.corrections, {
+    x,
+    y,
+    w,
+    h: 50,
+    max: 20,
+    color: "#ffa657",
+    label: "correction px",
+  });
   ctx.restore();
 }

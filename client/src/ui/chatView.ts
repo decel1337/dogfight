@@ -15,7 +15,10 @@ export interface ChatView {
   destroy(): void;
 }
 
-export function createChatView({ onSend, maxLength = 200 }: ChatViewOptions): ChatView {
+export function createChatView({
+  onSend,
+  maxLength = 200,
+}: ChatViewOptions): ChatView {
   const root = document.createElement("div");
   root.id = "chat-panel";
   root.style.cssText = [

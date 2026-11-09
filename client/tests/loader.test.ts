@@ -1,29 +1,31 @@
 import assert from "node:assert/strict";
-import { type Server, createServer } from "node:http";
+import { createServer, type Server } from "node:http";
 import { afterAll as after, beforeAll as before, test } from "vitest";
 import {
   BadPayloadError,
-  HttpError,
-  type Loaders,
   fetchBytes,
   fetchJson,
+  HttpError,
+  type Loaders,
   loadAll,
   requestJson,
   withRetry,
 } from "../src/assets/loader.ts";
-import { Lobby, type JoinDetail, type RoomInfo } from "../src/lobby/lobby.ts";
+import { type JoinDetail, Lobby, type RoomInfo } from "../src/lobby/lobby.ts";
 
 // Порт сервера, що слухає TCP (address() може бути рядком або null).
 function portOf(server: Server): number {
   const address = server.address();
-  if (address === null || typeof address === "string") throw new Error("сервер не слухає порт");
+  if (address === null || typeof address === "string")
+    throw new Error("сервер не слухає порт");
   return address.port;
 }
 
 let server: Server;
 let base = "";
 const hits = new Map();
-const hit = (path: string): number => hits.set(path, (hits.get(path) ?? 0) + 1).get(path) ?? 0;
+const hit = (path: string): number =>
+  hits.set(path, (hits.get(path) ?? 0) + 1).get(path) ?? 0;
 
 before(async () => {
   server = createServer((req, res) => {
@@ -46,7 +48,9 @@ before(async () => {
     }
     res.writeHead(404).end();
   });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  await new Promise<void>((resolve) =>
+    server.listen(0, "127.0.0.1", () => resolve()),
+  );
   base = `http://127.0.0.1:${portOf(server)}`;
 });
 
@@ -155,7 +159,9 @@ test("requestJson: таймаут на кожну спробу", async () => {
 test("loadAll: прогрес реальний, збій одного ассета не валить решту", async () => {
   const loaders: Loaders<string, string> = {
     image: async (url, opts) => (await fetchBytes(url, opts), `img:${url}`),
-    sound: async (url, _ctx, opts) => (await fetchBytes(url, opts), `snd:${url}`),
+    sound: async (url, _ctx, opts) => (
+      await fetchBytes(url, opts), `snd:${url}`
+    ),
   };
   const progress: [number, number][] = [];
   const manifest = {
@@ -167,7 +173,9 @@ test("loadAll: прогрес реальний, збій одного ассет
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify(manifest));
   });
-  await new Promise<void>((r) => manifestServer.listen(0, "127.0.0.1", () => r()));
+  await new Promise<void>((r) =>
+    manifestServer.listen(0, "127.0.0.1", () => r()),
+  );
   const url = `http://127.0.0.1:${portOf(manifestServer)}/m.json`;
 
   const result = await loadAll(url, {
@@ -176,7 +184,10 @@ test("loadAll: прогрес реальний, збій одного ассет
   });
   manifestServer.close();
 
-  assert.deepEqual(progress.map((p) => p[0]), [0, 1, 2, 3]);
+  assert.deepEqual(
+    progress.map((p) => p[0]),
+    [0, 1, 2, 3],
+  );
   assert.ok(progress.every((p) => p[1] === 3));
   assert.equal(result.failed.length, 1);
   const [failure] = result.failed;
@@ -209,7 +220,10 @@ test("Lobby: періодичне опитування, abort при join, по�
   assert.equal(lobby.join("nope", "x"), false);
   assert.equal(lobby.join("r1", "Ace"), true);
   assert.equal(joined[0]?.room.id, "r1");
-  assert.ok(signals.every((s) => s?.aborted), "запити скасовано при виході");
+  assert.ok(
+    signals.every((s) => s?.aborted),
+    "запити скасовано при виході",
+  );
 
   const count = seen.length;
   await new Promise((r) => setTimeout(r, 60));

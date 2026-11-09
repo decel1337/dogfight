@@ -9,10 +9,16 @@ export function shortestDelta(delta: number, size: number): number {
   return delta;
 }
 
-export const wrapInto = (value: number, size: number): number => ((value % size) + size) % size;
+export const wrapInto = (value: number, size: number): number =>
+  ((value % size) + size) % size;
 
 // Інтерполяція координати через шов тору.
-export function lerpWrap(from: number, to: number, t: number, size: number): number {
+export function lerpWrap(
+  from: number,
+  to: number,
+  t: number,
+  size: number,
+): number {
   return wrapInto(from + shortestDelta(to - from, size) * t, size);
 }
 

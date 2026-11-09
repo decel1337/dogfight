@@ -47,7 +47,11 @@ export function createLobbyView(
       roomName.value = "";
     } catch (error: unknown) {
       const reason =
-        error instanceof HttpError ? (error.detail ?? error.message) : error instanceof Error ? error.message : String(error);
+        error instanceof HttpError
+          ? (error.detail ?? error.message)
+          : error instanceof Error
+            ? error.message
+            : String(error);
       status.textContent = `Не вдалося створити кімнату: ${reason}`;
     } finally {
       createButton.disabled = false;

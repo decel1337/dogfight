@@ -27,7 +27,10 @@ export class TokenBucket {
     const t = this.now();
     const elapsed = Math.max(0, t - this.#last) / 1000;
     this.#last = t;
-    this.#tokens = Math.min(this.burst, this.#tokens + elapsed * this.ratePerSec);
+    this.#tokens = Math.min(
+      this.burst,
+      this.#tokens + elapsed * this.ratePerSec,
+    );
     if (this.#tokens < cost) return false;
     this.#tokens -= cost;
     return true;

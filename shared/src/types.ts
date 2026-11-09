@@ -9,6 +9,10 @@ export type Brand<T, B extends string> = T & { readonly [brand]: B };
 
 export type EntityId = Brand<number, "EntityId">;
 export type PlayerId = Brand<number, "PlayerId">;
+// Номер кроку симуляції і порядковий номер input-у — обидва u32, але
+// плутати їх не можна: ack (SeqNo) не передати туди, де чекають Tick.
+export type Tick = Brand<number, "Tick">;
+export type SeqNo = Brand<number, "SeqNo">;
 
 // Єдине місце в проєкті, де число «стає» брендованим: усі конструктори
 // нижче викликають його. Приведення справедливе: runtime-значення не
@@ -32,6 +36,25 @@ export function playerId(n: number): PlayerId {
   }
   return brandNumber<PlayerId>(n);
 }
+
+const U32_MAX = 0xffffffff;
+
+export function tick(n: number): Tick {
+  if (!Number.isInteger(n) || n < 0 || n > U32_MAX) {
+    throw new RangeError(`Tick поза діапазоном u32: ${n}`);
+  }
+  return brandNumber<Tick>(n);
+}
+
+export function seqNo(n: number): SeqNo {
+  if (!Number.isInteger(n) || n < 0 || n > U32_MAX) {
+    throw new RangeError(`SeqNo поза діапазоном u32: ${n}`);
+  }
+  return brandNumber<SeqNo>(n);
+}
+
+export const TICK_ZERO: Tick = brandNumber<Tick>(0);
+export const SEQ_ZERO: SeqNo = brandNumber<SeqNo>(0);
 
 export type Arena = Readonly<{ width: number; height: number }>;
 

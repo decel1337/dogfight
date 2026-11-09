@@ -45,7 +45,8 @@ describe("createLoop з підміненим requestAnimationFrame", () => {
       // Виконує один кадр на віртуальному часі `time` (мс).
       frame(time: number) {
         const [handle, cb] = [...queue.entries()][0] ?? [];
-        if (handle === undefined || !cb) throw new Error("немає запланованого кадру");
+        if (handle === undefined || !cb)
+          throw new Error("немає запланованого кадру");
         queue.delete(handle);
         cb(time);
       },
@@ -56,7 +57,11 @@ describe("createLoop з підміненим requestAnimationFrame", () => {
     const raf = fakeRaf();
     let simulated = 0;
     let rendered = 0;
-    const loop = createLoop({ step: 1 / 60, simulate: () => simulated++, render: () => rendered++ });
+    const loop = createLoop({
+      step: 1 / 60,
+      simulate: () => simulated++,
+      render: () => rendered++,
+    });
     loop.start();
     raf.frame(0);
     raf.frame(1000 / 60);
@@ -67,7 +72,11 @@ describe("createLoop з підміненим requestAnimationFrame", () => {
 
   test("метрики: після півсекунди рахуються fps і кроки/с", () => {
     const raf = fakeRaf();
-    const loop = createLoop({ step: 1 / 60, simulate: () => {}, render: () => {} });
+    const loop = createLoop({
+      step: 1 / 60,
+      simulate: () => {},
+      render: () => {},
+    });
     loop.start();
     for (let t = 0; t <= 600; t += 1000 / 60) raf.frame(t);
     expect(loop.metrics.fps).toBeGreaterThan(50);

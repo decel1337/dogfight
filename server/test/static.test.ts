@@ -9,7 +9,10 @@ const ROOT = path.resolve("/srv/app/dist");
 
 test("resolveSafe: звичайні шляхи лишаються всередині root", () => {
   assert.equal(resolveSafe(ROOT, "/index.html"), path.join(ROOT, "index.html"));
-  assert.equal(resolveSafe(ROOT, "/assets/a.js"), path.join(ROOT, "assets/a.js"));
+  assert.equal(
+    resolveSafe(ROOT, "/assets/a.js"),
+    path.join(ROOT, "assets/a.js"),
+  );
   assert.equal(resolveSafe(ROOT, "/"), ROOT);
 });
 
@@ -27,7 +30,10 @@ test("resolveSafe: path traversal відхиляється", () => {
   ];
   for (const attack of attacks) {
     const resolved = resolveSafe(ROOT, attack);
-    const inside = resolved === null || resolved === ROOT || resolved.startsWith(ROOT + path.sep);
+    const inside =
+      resolved === null ||
+      resolved === ROOT ||
+      resolved.startsWith(ROOT + path.sep);
     assert.ok(inside, `${attack} -> ${resolved}`);
   }
 });
@@ -52,7 +58,10 @@ test("HTTP static: віддає файли з MIME, блокує traversal, 404,
   await withApp({}, async ({ http, staticDir }) => {
     mkdirSync(path.join(staticDir, "assets"));
     writeFileSync(path.join(staticDir, "index.html"), "<h1>hi</h1>");
-    writeFileSync(path.join(staticDir, "assets", "app-AbCdEf123.js"), "export {}");
+    writeFileSync(
+      path.join(staticDir, "assets", "app-AbCdEf123.js"),
+      "export {}",
+    );
     writeFileSync(path.join(staticDir, "..", "outside-secret.txt"), "secret");
 
     const index = await fetch(`${http}/`);
@@ -68,24 +77,50 @@ test("HTTP static: віддає файли з MIME, блокує traversal, 404,
 
     // fetch нормалізує "..", тому надсилаємо сирий запит через http.request
     const { request } = await import("node:http");
-    const raw = (urlPath: string): Promise<{ status: number | undefined; body: string }> =>
+    const raw = (
+      urlPath: string,
+    ): Promise<{ status: number | undefined; body: string }> =>
       new Promise((resolve, reject) => {
         const { port } = new URL(http);
-        const req = request({ host: "127.0.0.1", port, path: urlPath }, (res) => {
-          let body = "";
-          res.on("data", (c: Buffer) => (body += c));
-          res.on("end", () => resolve({ status: res.statusCode, body }));
-        });
+        const req = request(
+          { host: "127.0.0.1", port, path: urlPath },
+          (res) => {
+            let body = "";
+            res.on("data", (c: Buffer) => (body += c));
+            res.on("end", () => resolve({ status: res.statusCode, body }));
+          },
+        );
         req.on("error", reject);
         req.end();
       });
-    for (const attack of ["/../outside-secret.txt", "/%2e%2e/outside-secret.txt", "/..%2foutside-secret.txt"]) {
+    for (const attack of [
+      "/../outside-secret.txt",
+      "/%2e%2e/outside-secret.txt",
+      "/..%2foutside-secret.txt",
+    ]) {
       const result = await raw(attack);
-      assert.ok(result.status === 403 || result.status === 404, `${attack}: ${result.status}`);
+      assert.ok(
+        result.status === 403 || result.status === 404,
+        `${attack}: ${result.status}`,
+      );
       assert.notEqual(result.body, "secret");
     }
 
     const post = await fetch(`${http}/index.html`, { method: "POST" });
     assert.equal(post.status, 405);
+  });
+});
+
+test("PWA: manifest віддається з правильним MIME, sw.js не кешується", async () => {
+  await withApp({}, async (ctx) => {
+    writeFileSync(path.join(ctx.staticDir, "manifest.webmanifest"), "{}");
+    writeFileSync(path.join(ctx.staticDir, "sw.js"), "// sw");
+    const manifest = await fetch(`${ctx.http}/manifest.webmanifest`);
+    assert.match(
+      manifest.headers.get("content-type") ?? "",
+      /^application\/manifest\+json/,
+    );
+    const sw = await fetch(`${ctx.http}/sw.js`);
+    assert.equal(sw.headers.get("cache-control"), "no-cache");
   });
 });

@@ -1,10 +1,20 @@
 import { DEFAULT_ARENA } from "../constants.ts";
 import { Emitter } from "../emitter.ts";
 import { mulberry32 as createRng, type Rng } from "../prng.ts";
-import { type Arena, entityId, type EntityId } from "../types.ts";
+import { type Arena, type EntityId, entityId } from "../types.ts";
 import { wrapBounds } from "./arena.ts";
-import { type CollisionFinder, findCollisions, resolvePair } from "./collision.ts";
-import { type AnyEntity, entityFromRecord, isKind, type Ship } from "./entities.ts";
+import {
+  type CollisionFinder,
+  findCollisions,
+  resolvePair,
+} from "./collision.ts";
+import {
+  type AnyEntity,
+  Bullet,
+  entityFromRecord,
+  isKind,
+  type Ship,
+} from "./entities.ts";
 import type { EntityKind, EntityOf, EntityRecord } from "./entity.ts";
 import { Vector2 } from "./vector.ts";
 
@@ -41,7 +51,11 @@ export class World {
   readonly collisions: CollisionFinder;
   tick = 0;
 
-  constructor({ arena = DEFAULT_ARENA, seed = 1, collisions = findCollisions }: WorldOptions = {}) {
+  constructor({
+    arena = DEFAULT_ARENA,
+    seed = 1,
+    collisions = findCollisions,
+  }: WorldOptions = {}) {
     this.arena = arena;
     this.seed = seed >>> 0;
     this.rng = createRng(this.seed);
@@ -141,7 +155,11 @@ export class World {
     }
 
     for (const [id, entity] of this.#entities) {
-      if (!entity.alive) this.#entities.delete(id);
+      if (!entity.alive) {
+        this.#entities.delete(id);
+        // Мертва куля повертається в пул; id вільний для нових сутностей.
+        if (isKind(entity, "bullet")) Bullet.release(entity);
+      }
     }
   }
 

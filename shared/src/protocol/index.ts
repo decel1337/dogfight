@@ -5,6 +5,7 @@
 //  керування (завжди JSON, текстові кадри):
 //    клієнт -> сервер  join {room, name, codec?}   chat {text}   net {latency, jitter, drop}
 //    сервер -> клієнт  joined {...}   roster {players}   chat {...}   error {message}
+//                      shutdown {reason, reconnectMs}  (сервер зупиняється: не перепідключайся одразу)
 //
 //  ігрові (кодек JSON або бінарний — обирається в join):
 //    клієнт -> сервер  input {seq, tick, thrust, turn, fire}   ping {t}
@@ -13,7 +14,7 @@
 // У JSON кожне повідомлення має поле `v` (версію) і `type`.
 // Типи не існують у runtime, тому КОЖЕН вхід перевіряється схемою.
 import { z } from "zod";
-import { entityId, playerId } from "../types.ts";
+import { entityId, playerId, seqNo, tick } from "../types.ts";
 
 export const PROTOCOL_VERSION = 1;
 
@@ -47,6 +48,8 @@ const u32 = z.number().int().min(0).max(0xffffffff);
 const u16 = z.number().int().min(0).max(0xffff);
 const finite = z.number().finite();
 
+const TickSchema = u32.transform(tick);
+const SeqSchema = u32.transform(seqNo);
 const EntityIdSchema = u16.transform(entityId);
 const PlayerIdSchema = u16.transform(playerId);
 
@@ -75,8 +78,8 @@ const PlayerSchema = z.object({ id: PlayerIdSchema, name: z.string() });
 
 export const InputSchema = z.object({
   type: z.literal("input"),
-  seq: u32,
-  tick: u32,
+  seq: SeqSchema,
+  tick: TickSchema,
   // Літеральні union-и замість «число від -1 до 1»: turn: 1000 — це чит.
   thrust: z.union([z.literal(0), z.literal(1)]),
   turn: z.union([z.literal(-1), z.literal(0), z.literal(1)]),
@@ -88,10 +91,7 @@ export const PingSchema = z.object({ type: z.literal("ping"), t: u32 });
 const JoinSchema = z.object({
   type: z.literal("join"),
   room: z.string().regex(ROOM_ID_RE, "очікується ідентифікатор кімнати"),
-  name: z
-    .string()
-    .trim()
-    .regex(NAME_RE, "1–16 літер, цифр, пробіл _ . -"),
+  name: z.string().trim().regex(NAME_RE, "1–16 літер, цифр, пробіл _ . -"),
   codec: z.enum(CODECS).default(DEFAULT_CODEC),
 });
 
@@ -133,7 +133,7 @@ const JoinedSchema = z.object({
   ship: EntityIdSchema,
   seed: u32,
   tickRate: z.number().int().positive(),
-  tick: u32,
+  tick: TickSchema,
   arena: ArenaSchema,
   codec: z.enum(CODECS),
   netsim: z.boolean(),
@@ -154,10 +154,18 @@ const ChatBroadcastSchema = z.object({
 
 const ErrorSchema = z.object({ type: z.literal("error"), message: z.string() });
 
+// Сервер коректно зупиняється (деплой/SIGTERM). Надсилається перед кадром close 1001,
+// щоб клієнт показав зрозуміле повідомлення, а не «з'єднання втрачено».
+const ShutdownSchema = z.object({
+  type: z.literal("shutdown"),
+  reason: z.string(),
+  reconnectMs: z.number().int().min(0).max(600_000),
+});
+
 export const SnapshotSchema = z.object({
   type: z.literal("snapshot"),
-  tick: u32,
-  ack: u32,
+  tick: TickSchema,
+  ack: SeqSchema,
   entities: z.array(EntityRecordSchema),
 });
 
@@ -170,14 +178,14 @@ export const GameEventSchema = z.object({
 
 export const EventsSchema = z.object({
   type: z.literal("events"),
-  tick: u32,
+  tick: TickSchema,
   events: z.array(GameEventSchema),
 });
 
 export const PongSchema = z.object({
   type: z.literal("pong"),
   t: u32,
-  tick: u32,
+  tick: TickSchema,
 });
 
 export const ServerMessageSchema = z.discriminatedUnion("type", [
@@ -185,6 +193,7 @@ export const ServerMessageSchema = z.discriminatedUnion("type", [
   RosterSchema,
   ChatBroadcastSchema,
   ErrorSchema,
+  ShutdownSchema,
   SnapshotSchema,
   EventsSchema,
   PongSchema,
@@ -213,7 +222,9 @@ export type ParseResult<T> =
   | { readonly ok: true; readonly msg: T }
   | { readonly ok: false; readonly code: CloseCode; readonly reason: string };
 
-const bad = (reason: string): { ok: false; code: CloseCode; reason: string } => ({
+const bad = (
+  reason: string,
+): { ok: false; code: CloseCode; reason: string } => ({
   ok: false,
   code: CLOSE.INVALID_MESSAGE,
   reason,
@@ -243,7 +254,9 @@ function parseEnvelope<S extends z.ZodTypeAny>(
   }
   const version: unknown = Reflect.get(json, "v");
   if (version !== PROTOCOL_VERSION) {
-    return bad(`непідтримувана версія протоколу: ${String(version).slice(0, 16)}`);
+    return bad(
+      `непідтримувана версія протоколу: ${String(version).slice(0, 16)}`,
+    );
   }
   const parsed = schema.safeParse(json);
   if (!parsed.success) return bad(describeIssues(parsed.error));
@@ -256,7 +269,8 @@ export function parseClientMessage(
   raw: string | Uint8Array,
   { maxBytes }: { maxBytes: number },
 ): ParseResult<ClientMessage> {
-  const bytes = typeof raw === "string" ? new TextEncoder().encode(raw).length : raw.length;
+  const bytes =
+    typeof raw === "string" ? new TextEncoder().encode(raw).length : raw.length;
   if (bytes > maxBytes) {
     return { ok: false, code: CLOSE.TOO_BIG, reason: "повідомлення завелике" };
   }

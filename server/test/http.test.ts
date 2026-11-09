@@ -4,12 +4,17 @@ import path from "node:path";
 import { test } from "vitest";
 import { validateRoomInput } from "../src/app.ts";
 import { loadConfig } from "../src/config.ts";
-import { type RoomJson, createRoom, withApp } from "./helpers.ts";
+import { createRoom, type RoomJson, withApp } from "./helpers.ts";
 
 // Відповіді нашого API в тестах читаємо через явні форми.
-const readJson = async <T>(res: Response): Promise<T> => (await res.json()) as T;
+const readJson = async <T>(res: Response): Promise<T> =>
+  (await res.json()) as T;
 
-const postJson = (url: string, body: unknown, headers: Record<string, string> = {}): Promise<Response> =>
+const postJson = (
+  url: string,
+  body: unknown,
+  headers: Record<string, string> = {},
+): Promise<Response> =>
   fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json", ...headers },
@@ -20,7 +25,11 @@ test("GET /health", async () => {
   await withApp({}, async ({ http }) => {
     const res = await fetch(`${http}/health`);
     assert.equal(res.status, 200);
-    const body = await readJson<{ status: string; rss: unknown; rooms: number }>(res);
+    const body = await readJson<{
+      status: string;
+      rss: unknown;
+      rooms: number;
+    }>(res);
     assert.equal(body.status, "ok");
     assert.equal(typeof body.rss, "number");
     assert.equal(body.rooms, 0);
@@ -29,7 +38,10 @@ test("GET /health", async () => {
 
 test("POST /api/rooms створює кімнату, GET /api/rooms показує її", async () => {
   await withApp({}, async ({ http }) => {
-    const res = await postJson(`${http}/api/rooms`, { name: "Alpha", maxPlayers: 3 });
+    const res = await postJson(`${http}/api/rooms`, {
+      name: "Alpha",
+      maxPlayers: 3,
+    });
     assert.equal(res.status, 201);
     const room = await readJson<RoomJson>(res);
     assert.equal(room.name, "Alpha");
@@ -37,7 +49,10 @@ test("POST /api/rooms створює кімнату, GET /api/rooms показу
     assert.equal(res.headers.get("location"), `/api/rooms/${room.id}`);
 
     const list = await readJson<RoomJson[]>(await fetch(`${http}/api/rooms`));
-    assert.deepEqual(list.map((r) => r.id), [room.id]);
+    assert.deepEqual(
+      list.map((r) => r.id),
+      [room.id],
+    );
     assert.equal(list[0]?.players, 0);
   });
 });
@@ -87,7 +102,10 @@ test("POST /api/rooms: ліміт кімнат -> 429", async () => {
 
 test("validateRoomInput копіює лише відомі поля", () => {
   const config = loadConfig({});
-  const input = validateRoomInput({ name: " A ", evil: "x", __proto__: { polluted: 1 } }, config);
+  const input = validateRoomInput(
+    { name: " A ", evil: "x", __proto__: { polluted: 1 } },
+    config,
+  );
   assert.deepEqual(input, { name: "A" });
   assert.equal(Reflect.get({}, "polluted"), undefined);
 });
@@ -108,8 +126,12 @@ test("GET /api/replays/:id стрімить файл; список; traversal б
     const content = `${Array.from({ length: 2000 }, (_, i) => JSON.stringify({ i })).join("\n")}\n`;
     await writeFile(path.join(logDir, "demo-1.ndjson"), content);
 
-    const list = await readJson<{ id: string; bytes: number }[]>(await fetch(`${http}/api/replays`));
-    assert.ok(list.some((r) => r.id === "demo-1" && r.bytes === content.length));
+    const list = await readJson<{ id: string; bytes: number }[]>(
+      await fetch(`${http}/api/replays`),
+    );
+    assert.ok(
+      list.some((r) => r.id === "demo-1" && r.bytes === content.length),
+    );
 
     const res = await fetch(`${http}/api/replays/demo-1`);
     assert.equal(res.status, 200);
@@ -117,7 +139,10 @@ test("GET /api/replays/:id стрімить файл; список; traversal б
     assert.equal(await res.text(), content);
 
     assert.equal((await fetch(`${http}/api/replays/missing`)).status, 404);
-    assert.equal((await fetch(`${http}/api/replays/..%2F..%2Fetc%2Fpasswd`)).status, 400);
+    assert.equal(
+      (await fetch(`${http}/api/replays/..%2F..%2Fetc%2Fpasswd`)).status,
+      400,
+    );
     assert.equal((await fetch(`${http}/api/replays/a.b`)).status, 400);
   });
 });
@@ -143,7 +168,13 @@ test("event loop: синхронний /api/slow затримує ВСІ тай�
     };
     const blocked = await timerLateness("/api/slow");
     const free = await timerLateness("/api/slow-async");
-    assert.ok(blocked > 150, `таймер 20 мс під sync-блокуванням: ${blocked.toFixed(0)} мс`);
-    assert.ok(free < 100, `таймер 20 мс під async-очікуванням: ${free.toFixed(0)} мс`);
+    assert.ok(
+      blocked > 150,
+      `таймер 20 мс під sync-блокуванням: ${blocked.toFixed(0)} мс`,
+    );
+    assert.ok(
+      free < 100,
+      `таймер 20 мс під async-очікуванням: ${free.toFixed(0)} мс`,
+    );
   });
 });

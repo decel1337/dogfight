@@ -1,15 +1,19 @@
+import { SCORE } from "../constants.ts";
 import { type AnyEntity, DAMAGE, isKind } from "./entities.ts";
 import type { Entity, EntityKind, EntityOf } from "./entity.ts";
-import type { World } from "./world.ts";
-import { SCORE } from "../constants.ts";
 import { Vector2 } from "./vector.ts";
+import type { World } from "./world.ts";
 
 // Система зіткнень відокремлена від World: вона лише ГЕНЕРУЄ пари. Її можна
 // замінити на просторовий хеш, не чіпаючи ні World, ні сутності.
 // Порядок пар визначається порядком вставки в Map світу, тобто детермінований.
-export type CollisionFinder = (world: World) => Iterable<readonly [AnyEntity, AnyEntity]>;
+export type CollisionFinder = (
+  world: World,
+) => Iterable<readonly [AnyEntity, AnyEntity]>;
 
-export function* findCollisions(world: World): Generator<readonly [AnyEntity, AnyEntity]> {
+export function* findCollisions(
+  world: World,
+): Generator<readonly [AnyEntity, AnyEntity]> {
   const list: AnyEntity[] = [];
   for (const entity of world) {
     if (entity.alive && entity.collidable) list.push(entity);

@@ -13,7 +13,8 @@ export function expectMessage<T extends GameMessage["type"]>(
   msg: GameMessage,
   type: T,
 ): Extract<GameMessage, { type: T }> {
-  if (!isMessage(msg, type)) assert.fail(`очікувалось ${type}, отримано ${msg.type}`);
+  if (!isMessage(msg, type))
+    assert.fail(`очікувалось ${type}, отримано ${msg.type}`);
   return msg;
 }
 
@@ -25,20 +26,29 @@ function isMessage<T extends GameMessage["type"]>(
 }
 
 // Звужує ParseResult до відмови (або валить тест).
-export function expectRejected<T>(result: ParseResult<T>): { code: number; reason: string } {
+export function expectRejected<T>(result: ParseResult<T>): {
+  code: number;
+  reason: string;
+} {
   if (result.ok) assert.fail("очікувалась відмова");
   return result;
 }
 
 // Один крок гри так, як його робить сервер: спершу input гравців (рух
 // кораблів), потім крок світу. inputs: Map<Ship, input>.
-export function advance(world: World, inputs: Map<Ship, ScriptedInput> = new Map()): void {
+export function advance(
+  world: World,
+  inputs: Map<Ship, ScriptedInput> = new Map(),
+): void {
   for (const [ship, input] of inputs) ship.applyInput(input, world);
   world.step();
 }
 
 // Світ із двома кораблями й кількома астероїдами; повністю від seed.
-export function makeWorld(seed = 7, { asteroids = 5 }: { asteroids?: number } = {}) {
+export function makeWorld(
+  seed = 7,
+  { asteroids = 5 }: { asteroids?: number } = {},
+) {
   const world = new World({ seed });
   const a = world.spawn(new Ship(300, 400, { playerId: playerId(1) }));
   const b = world.spawn(new Ship(900, 400, { playerId: playerId(2) }));
