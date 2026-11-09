@@ -34,8 +34,8 @@ const fire = fc.constantFrom(0 as const, 1 as const, 2 as const);
 
 const inputArb: fc.Arbitrary<InputMessage> = fc.record({
   type: fc.constant("input" as const),
-  seq: u32,
-  tick: u32,
+  seq: u32.map(asSeq),
+  tick: u32.map(asTick),
   thrust: bit,
   turn,
   fire,
@@ -272,7 +272,7 @@ test("property: withAck(encode(ack=0), a) == encode(ack=a) для будь-як�
           ack,
           entities,
         } as never);
-        const patched = withAck(base, ack);
+        const patched = withAck(base, asSeq(ack));
         expect(patched).toEqual(direct);
         expect(base[5]).toBe(0); // базовий буфер не змінюється
       },
