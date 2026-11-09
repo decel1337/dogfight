@@ -1,5 +1,5 @@
 # Fly.io. ПЕРЕД першим деплоєм: замініть app на унікальне ім'я (`fly apps create <ім'я>`).
-app = "dogfight-REPLACE-ME"
+app = "dogfight-decel"
 primary_region = "waw"          # Варшава; будь-який регіон поруч із гравцями
 
 # Образ збирає GitHub Actions (release.yml) і публікує в GHCR; деплой — `flyctl deploy --image`.
